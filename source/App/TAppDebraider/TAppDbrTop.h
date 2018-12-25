@@ -128,6 +128,9 @@ protected:
   // Overwrites the default configuration for output bit depth
   Void xSetOutputBitDepths(const BitDepths& bitDepths);
 
+  // Copies a nal unit body directly to a bitstream
+  Void xCopyNaluBodyToStream(const InputNALUnit& nalu, TComOutputBitstream& bitstream);
+
 
   /**
    * Decoded picture buffer management

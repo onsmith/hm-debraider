@@ -33,7 +33,8 @@ const std::string TDbrStreamSet::STREAM_NAMES[] = {
   "SAO_BLOCK_PARAMS",
   "LAST_SIG_XY",
   "SCALING_LIST",
-  "RDPCM"
+  "RDPCM",
+  "OTHER"
 };
 
 
@@ -92,7 +93,7 @@ Void TDbrStreamSet::clear() {
 
 Void TDbrStreamSet::open(const std::string& basename) {
   for (Int i = 0; i < NUM_STREAMS; i++) {
-    const std::string str = basename + STREAM_NAMES[i] + ".dat";
+    const std::string str = basename + '/' + STREAM_NAMES[i] + ".dat";
 
     ofstreams[i].open(
       str.c_str(),

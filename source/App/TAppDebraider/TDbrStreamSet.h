@@ -55,7 +55,7 @@
 class TDbrStreamSet {
 public:
   // Number of streams in the set
-  static const UInt NUM_STREAMS = 32;
+  static const UInt NUM_STREAMS = 33;
 
   // Stream index
   enum class STREAM {
@@ -93,7 +93,8 @@ public:
     SAO_BLOCK_PARAMS,  // Bits for encoding sample adaptive offset (sao) in-loop filter block params
     LAST_SIG_XY,       // Bits for encoding last significant (x, y) coordinate for dct coefficients
     SCALING_LIST,      // Bits for encoding scaling list
-    RDPCM              // Bits for encoding residual differential pulse code modulation (rdpcm)
+    RDPCM,             // Bits for encoding residual differential pulse code modulation (rdpcm)
+    OTHER              // Bits for encoding undecoded nal unit bodies
   };
 
   // Stream name strings

@@ -163,6 +163,8 @@ Void TAppDbrTop::debraid() {
       // Call decoding function
       if (willDecodeTemporalId && xWillDecodeLayer(nalu.m_nuhLayerId)) {
         wasNewPictureFound = m_decoder.decode(nalu, m_iSkipFrame, m_lastOutputPOC);
+      } else {
+        xCopyNaluBodyToStream(nalu, outputStreams.getBitstream(TDbrStreamSet::STREAM::OTHER));
       }
 
       // Flush and clear the bitstreams
@@ -703,6 +705,14 @@ Bool TAppDbrTop::xIsFirstNalUnitOfNewAccessUnit(const NALUnit& nalu) const {
   }
 
   return false;
+}
+
+
+// Copies a nal unit body directly to a bitstream
+Void TAppDbrTop::xCopyNaluBodyToStream(const InputNALUnit& nalu, TComOutputBitstream& bitstream) {
+  const std::vector<UChar>& naluFifo = nalu.getBitstream().getFifo();
+        std::vector<UChar>& dstFifo  = bitstream.getFIFO();
+  dstFifo = naluFifo;
 }
 
 
