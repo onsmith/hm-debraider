@@ -131,6 +131,9 @@ protected:
   // Copies a nal unit body directly to a bitstream
   Void xCopyNaluBodyToStream(const InputNALUnit& nalu, TComOutputBitstream& bitstream);
 
+  // True if a nal unit's contents need to be debraided
+  Bool xIsNalUnitDecoded(NalUnitType nalUnitType) const;
+
 
   /**
    * Decoded picture buffer management

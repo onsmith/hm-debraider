@@ -163,6 +163,9 @@ Void TAppDbrTop::debraid() {
       // Call decoding function
       if (willDecodeTemporalId && xWillDecodeLayer(nalu.m_nuhLayerId)) {
         wasNewPictureFound = m_decoder.decode(nalu, m_iSkipFrame, m_lastOutputPOC);
+        if (!wasNewPictureFound && !xIsNalUnitDecoded(nalu.m_nalUnitType)) {
+          xCopyNaluBodyToStream(nalu, outputStreams.getBitstream(TDbrStreamSet::STREAM::OTHER));
+        }
       } else {
         xCopyNaluBodyToStream(nalu, outputStreams.getBitstream(TDbrStreamSet::STREAM::OTHER));
       }
@@ -708,11 +711,46 @@ Bool TAppDbrTop::xIsFirstNalUnitOfNewAccessUnit(const NALUnit& nalu) const {
 }
 
 
-// Copies a nal unit body directly to a bitstream
+/**
+ * Copies a nal unit body directly to a bitstream
+ */
 Void TAppDbrTop::xCopyNaluBodyToStream(const InputNALUnit& nalu, TComOutputBitstream& bitstream) {
   const std::vector<UChar>& naluFifo = nalu.getBitstream().getFifo();
         std::vector<UChar>& dstFifo  = bitstream.getFIFO();
   dstFifo = naluFifo;
+}
+
+
+/**
+ * True if a nal unit's contents need to be debraided
+ */
+Bool TAppDbrTop::xIsNalUnitDecoded(NalUnitType nalUnitType) const {
+  switch (nalUnitType) {
+    case NAL_UNIT_VPS:
+    case NAL_UNIT_SPS:
+    case NAL_UNIT_PPS:
+
+    case NAL_UNIT_CODED_SLICE_TRAIL_R:
+    case NAL_UNIT_CODED_SLICE_TRAIL_N:
+    case NAL_UNIT_CODED_SLICE_TSA_R:
+    case NAL_UNIT_CODED_SLICE_TSA_N:
+    case NAL_UNIT_CODED_SLICE_STSA_R:
+    case NAL_UNIT_CODED_SLICE_STSA_N:
+    case NAL_UNIT_CODED_SLICE_BLA_W_LP:
+    case NAL_UNIT_CODED_SLICE_BLA_W_RADL:
+    case NAL_UNIT_CODED_SLICE_BLA_N_LP:
+    case NAL_UNIT_CODED_SLICE_IDR_W_RADL:
+    case NAL_UNIT_CODED_SLICE_IDR_N_LP:
+    case NAL_UNIT_CODED_SLICE_CRA:
+    case NAL_UNIT_CODED_SLICE_RADL_N:
+    case NAL_UNIT_CODED_SLICE_RADL_R:
+    case NAL_UNIT_CODED_SLICE_RASL_N:
+    case NAL_UNIT_CODED_SLICE_RASL_R:
+      return true;
+
+    default:
+      return false;
+  }
 }
 
 
