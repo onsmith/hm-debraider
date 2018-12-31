@@ -107,11 +107,17 @@ Void TAppDbrTop::debraid() {
     m_decodedYUVOutputStream.close();
   }
 
-  // Copy decoding configuration to the decoder
-  m_decoder.getCavlcDecoder().setBitstreams(&outputStreams);
-  m_decoder.getSbacDecoder().setBitstreams(&outputStreams);
-  m_decoder.getSbacDecoder().setCabacReader(&m_decoder.getCabacReader());
-  xConfigDecoder();
+  // Copy decoder configuration to the decoder
+  {
+    TDbrBinCABAC& cabacReader  = m_decoder.getCabacReader();
+    TDbrSbac&     sbacDecoder  = m_decoder.getSbacDecoder();
+    TDbrCavlc&    cavlcDecoder = m_decoder.getCavlcDecoder();
+    cavlcDecoder.setBitstreams(&outputStreams);
+    sbacDecoder.setBitstreams(&outputStreams);
+    sbacDecoder.setCabacReader(&cabacReader);
+    sbacDecoder.init(&cabacReader);
+    xConfigDecoder();
+  }
 
   // Adjust the last output POC index if seeking is required before decoding
   m_lastOutputPOC += m_iSkipFrame;
@@ -141,7 +147,7 @@ Void TAppDbrTop::debraid() {
 
     // True if a new picture is found within the current NAL unit
     Bool wasNewPictureFound = false;
-    
+
     /* Check for empty bitstream. This can happen if the following occur:
      *  - empty input file
      *  - two back-to-back start_code_prefixes
@@ -717,7 +723,9 @@ Bool TAppDbrTop::xIsFirstNalUnitOfNewAccessUnit(const NALUnit& nalu) const {
 Void TAppDbrTop::xCopyNaluBodyToStream(const InputNALUnit& nalu, TComOutputBitstream& bitstream) {
   const std::vector<UChar>& naluFifo = nalu.getBitstream().getFifo();
         std::vector<UChar>& dstFifo  = bitstream.getFIFO();
-  dstFifo = naluFifo;
+  dstFifo.resize(naluFifo.size() - 2);
+  std::copy(naluFifo.begin() + 2, naluFifo.end(), dstFifo.begin());
+  //dstFifo = naluFifo;
 }
 
 

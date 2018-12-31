@@ -50,8 +50,12 @@ Void TDbrSbac::parseSliceHeader(TComSlice* pcSlice, ParameterSetManager* paramet
 
 Void TDbrSbac::parseTerminatingBit(UInt& ruilsLast) {
   TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::SLICE));
+  TComBitIf* newOutputBitstream = &bitstreams->getBitstream(TDbrStreamSet::STREAM::SLICE);
+  cabacReader->setOutputBitstream(newOutputBitstream);
   TDecSbac::parseTerminatingBit(ruilsLast);
+  if (ruilsLast == 1) {
+    newOutputBitstream->writeAlignZero();
+  }
   cabacReader->setOutputBitstream(oldOutputBitstream);
 }
 
@@ -310,5 +314,3 @@ Void TDbrSbac::parseScalingList(TComScalingList* scalingList) {
   TDecSbac::parseScalingList(scalingList);
   cabacReader->setOutputBitstream(oldOutputBitstream);
 }
-
-

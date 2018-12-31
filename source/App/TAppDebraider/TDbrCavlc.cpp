@@ -30,8 +30,10 @@ Void TDbrCavlc::parsePPS(TComPPS* pcPPS) {
 
 
 Void TDbrCavlc::parseSliceHeader(TComSlice* pcSlice, ParameterSetManager* parameterSetManager, const Int prevTid0POC) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::SLICE));
+  TComOutputBitstream& sliceBitstream = bitstreams->getBitstream(TDbrStreamSet::STREAM::SLICE);
+  SyntaxElementWriter::setBitstream(&sliceBitstream);
   TDecCavlc::parseSliceHeader(pcSlice, parameterSetManager, prevTid0POC);
+  sliceBitstream.writeByteAlignment();
 }
 
 
