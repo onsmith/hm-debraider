@@ -202,6 +202,7 @@ Void TAppDbrTop::debraid() {
 #else
       inputStream.seekg(initialPositionInInputBitstream - streamoff(3));
       inputByteStream.reset();
+      outputStreams.clear();
 #endif
     }
 
