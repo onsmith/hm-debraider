@@ -1,217 +1,111 @@
 #include "TDbrCavlc.h"
 
 
-Void TDbrCavlc::setBitstreams(TDbrStreamSet* bitstreams) {
-  this->bitstreams = bitstreams;
+Void TDbrCavlc::setXmlWriter(TDbrXmlWriter* xmlWriter) {
+  this->xmlWriter = xmlWriter;
 }
 
 
-TDbrStreamSet* TDbrCavlc::getBitstreams() {
-  return bitstreams;
+TDbrXmlWriter* TDbrCavlc::setXmlWriter() {
+  return xmlWriter;
+}
+
+
+Void TDbrCavlc::parseShortTermRefPicSet(TComSPS* sps, TComReferencePictureSet* rps, Int idx) {
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("short-term-ref-pic-set");
+  TDecCavlc::parseShortTermRefPicSet(sps, rps, idx);
+  xmlWriter->writeCloseTag("short-term-ref-pic-set");
 }
 
 
 Void TDbrCavlc::parseVPS(TComVPS* pcVPS) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::VPS));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("vps");
   TDecCavlc::parseVPS(pcVPS);
+  xmlWriter->writeCloseTag("vps");
 }
 
 
 Void TDbrCavlc::parseSPS(TComSPS* pcSPS) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::SPS));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("sps");
   TDecCavlc::parseSPS(pcSPS);
+  xmlWriter->writeCloseTag("sps");
 }
 
 
 Void TDbrCavlc::parsePPS(TComPPS* pcPPS) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::PPS));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("pps");
   TDecCavlc::parsePPS(pcPPS);
+  xmlWriter->writeCloseTag("pps");
 }
 
 
 Void TDbrCavlc::parseSliceHeader(TComSlice* pcSlice, ParameterSetManager* parameterSetManager, const Int prevTid0POC) {
-  TComOutputBitstream& sliceBitstream = bitstreams->getBitstream(TDbrStreamSet::STREAM::SLICE);
-  SyntaxElementWriter::setBitstream(&sliceBitstream);
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("slice-header");
   TDecCavlc::parseSliceHeader(pcSlice, parameterSetManager, prevTid0POC);
-  sliceBitstream.writeByteAlignment();
+  xmlWriter->writeCloseTag("slice-header");
 }
 
 
 Void TDbrCavlc::parseTerminatingBit(UInt& ruilsLast) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::SLICE));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("slice-terminating-bit");
   TDecCavlc::parseTerminatingBit(ruilsLast);
+  xmlWriter->writeCloseTag("slice-terminating-bit");
 }
 
 
 Void TDbrCavlc::parseRemainingBytes(Bool noTrailingBytesExpected) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::SLICE));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("slice-remaining-bytes");
   TDecCavlc::parseRemainingBytes(noTrailingBytesExpected);
-}
-
-
-Void TDbrCavlc::parseMVPIdx(Int& riMVPIdx) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::MVP_INDEX));
-  TDecCavlc::parseMVPIdx(riMVPIdx);
-}
-
-
-Void TDbrCavlc::parseSkipFlag(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::SKIP_FLAG));
-  TDecCavlc::parseSkipFlag(pcCU, uiAbsPartIdx, uiDepth);
-}
-
-
-Void TDbrCavlc::parseCUTransquantBypassFlag(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::TQ_BYPASS_FLAG));
-  TDecCavlc::parseCUTransquantBypassFlag(pcCU, uiAbsPartIdx, uiDepth);
-}
-
-
-Void TDbrCavlc::parseSplitFlag(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::SPLIT_FLAG));
-  TDecCavlc::parseSplitFlag(pcCU, uiAbsPartIdx, uiDepth);
-}
-
-
-Void TDbrCavlc::parseMergeFlag(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth, UInt uiPUIdx) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::MERGE_FLAG));
-  TDecCavlc::parseMergeFlag(pcCU, uiAbsPartIdx, uiDepth, uiPUIdx);
-}
-
-
-Void TDbrCavlc::parseMergeIndex(TComDataCU* pcCU, UInt& ruiMergeIndex) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::MERGE_INDEX));
-  TDecCavlc::parseMergeIndex(pcCU, ruiMergeIndex);
-}
-
-
-Void TDbrCavlc::parsePartSize(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::PART_SIZE));
-  TDecCavlc::parsePartSize(pcCU, uiAbsPartIdx, uiDepth);
-}
-
-
-Void TDbrCavlc::parsePredMode(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::PRED_MODE));
-  TDecCavlc::parsePredMode(pcCU, uiAbsPartIdx, uiDepth);
-}
-
-
-Void TDbrCavlc::parseIntraDirLumaAng(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::INTRA_DIR_LUMA));
-  TDecCavlc::parseIntraDirLumaAng(pcCU, uiAbsPartIdx, uiDepth);
-}
-
-
-Void TDbrCavlc::parseIntraDirChroma(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::INTRA_DIR_CHROMA));
-  TDecCavlc::parseIntraDirChroma(pcCU, uiAbsPartIdx, uiDepth);
-}
-
-
-Void TDbrCavlc::parseInterDir(TComDataCU* pcCU, UInt& ruiInterDir, UInt uiAbsPartIdx) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::INTER_DIR));
-  TDecCavlc::parseInterDir(pcCU, ruiInterDir, uiAbsPartIdx);
-}
-
-
-Void TDbrCavlc::parseRefFrmIdx(TComDataCU* pcCU, Int& riRefFrmIdx, RefPicList eRefList) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::REF_FRAME_INDEX));
-  TDecCavlc::parseRefFrmIdx(pcCU, riRefFrmIdx, eRefList);
-}
-
-
-Void TDbrCavlc::parseMvd(TComDataCU* pcCU, UInt uiAbsPartAddr, UInt uiPartIdx, UInt uiDepth, RefPicList eRefList) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::MVD));
-  TDecCavlc::parseMvd(pcCU, uiAbsPartAddr, uiPartIdx, uiDepth, eRefList);
-}
-
-
-Void TDbrCavlc::parseCrossComponentPrediction(TComTU& rTu, ComponentID compID) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::CROSS_COMP_PRED));
-  TDecCavlc::parseCrossComponentPrediction(rTu, compID);
-}
-
-
-Void TDbrCavlc::parseTransformSubdivFlag(UInt& ruiSubdivFlag, UInt uiLog2TransformBlockSize) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::TU_SUBDIV_FLAG));
-  TDecCavlc::parseTransformSubdivFlag(ruiSubdivFlag, uiLog2TransformBlockSize);
-}
-
-
-Void TDbrCavlc::parseQtCbf(TComTU& rTu, const ComponentID compID, const Bool lowestLevel) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::QT_CBF));
-  TDecCavlc::parseQtCbf(rTu, compID, lowestLevel);
-}
-
-
-Void TDbrCavlc::parseQtRootCbf(UInt uiAbsPartIdx, UInt& uiQtRootCbf) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::QT_CBF));
-  TDecCavlc::parseQtRootCbf(uiAbsPartIdx, uiQtRootCbf);
+  xmlWriter->writeCloseTag("slice-remaining-bytes");
 }
 
 
 Void TDbrCavlc::parseDeltaQP(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::DQP));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("delta-qp");
   TDecCavlc::parseDeltaQP(pcCU, uiAbsPartIdx, uiDepth);
-}
-
-
-Void TDbrCavlc::parseChromaQpAdjustment(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::CHROMA_QP_ADJ));
-  TDecCavlc::parseChromaQpAdjustment(pcCU, uiAbsPartIdx, uiDepth);
-}
-
-
-Void TDbrCavlc::parseIPCMInfo(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::IPCM));
-  TDecCavlc::parseIPCMInfo(pcCU, uiAbsPartIdx, uiDepth);
-}
-
-
-Void TDbrCavlc::parseCoeffNxN(TComTU& rTu, ComponentID compID) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::COEFF));
-  TDecCavlc::parseCoeffNxN(rTu, compID);
-}
-
-
-Void TDbrCavlc::parseTransformSkipFlags(TComTU& rTu, ComponentID component) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::TU_SKIP_FLAG));
-  TDecCavlc::parseTransformSkipFlags(rTu, component);
-}
-
-
-Void TDbrCavlc::parseExplicitRdpcmMode(TComTU& rTu, ComponentID compID) {
-  SyntaxElementWriter::setBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::RDPCM));
-  TDecCavlc::parseExplicitRdpcmMode(rTu, compID);
+  xmlWriter->writeCloseTag("delta-qp");
 }
 
 
 Void TDbrCavlc::xReadCode(UInt length, UInt& val) {
   SyntaxElementParser::xReadCode(length, val);
-  SyntaxElementWriter::xWriteCode(val, length);
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeValueTag("code", val, length);
 }
 
 
 Void TDbrCavlc::xReadUvlc(UInt& val) {
   SyntaxElementParser::xReadUvlc(val);
-  SyntaxElementWriter::xWriteUvlc(val);
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeValueTag("uvlc", val);
 }
 
 
 Void TDbrCavlc::xReadSvlc(Int& val) {
   SyntaxElementParser::xReadSvlc(val);
-  SyntaxElementWriter::xWriteSvlc(val);
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeValueTag("svlc", val);
 }
 
 
 Void TDbrCavlc::xReadFlag(UInt& val) {
   SyntaxElementParser::xReadFlag(val);
-  SyntaxElementWriter::xWriteFlag(val);
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeValueTag("flag", val);
 }
 
 
 Void TDbrCavlc::xReadRbspTrailingBits() {
+  xmlWriter->disableWriting();
   SyntaxElementParser::xReadRbspTrailingBits();
-  SyntaxElementWriter::xWriteRbspTrailingBits();
+  xmlWriter->enableWriting();
+  xmlWriter->writeValueTag("rsbp-trailing-bits", 1);
 }

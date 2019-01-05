@@ -42,69 +42,73 @@
 #pragma once
 
 #include "TDbrBinCABAC.h"
-#include "TDbrStreamSet.h"
+#include "TDbrXmlWriter.h"
 
 #include "TLibDecoder/TDecCAVLC.h"
-#include "TLibEncoder/SyntaxElementWriter.h"
 
 
 //! \ingroup TAppDebraider
 //! \{
 
 
-class TDbrCavlc : public TDecCavlc, protected SyntaxElementWriter {
+class TDbrCavlc : public TDecCavlc {
 protected:
-  // Stores a set of debraided output bitstreams as a TDbrStreamSet object
-  TDbrStreamSet* bitstreams;
+  // Stores a xml writer for outputting xml tags
+  TDbrXmlWriter* xmlWriter;
 
 
 public:
-  // Bitstream set management
-  Void setBitstreams(TDbrStreamSet* bitstreams);
-  TDbrStreamSet* getBitstreams();
+  // Xml writer management
+  Void setXmlWriter(TDbrXmlWriter* xmlWriter);
+  TDbrXmlWriter* setXmlWriter();
 
 
-  // Override TDecEntropyIf virtual methods to set the output bitstream before
-  //   parsing
+  // Override TDecEntropyIf virtual methods to output start and end xml tags
+  //   to the xml stream
   Void parseVPS(TComVPS* pcVPS);
   Void parseSPS(TComSPS* pcSPS);
   Void parsePPS(TComPPS* pcPPS);
   Void parseSliceHeader(TComSlice* pcSlice, ParameterSetManager* parameterSetManager, const Int prevTid0POC);
   Void parseTerminatingBit(UInt& ruilsLast);
   Void parseRemainingBytes(Bool noTrailingBytesExpected);
-  Void parseMVPIdx(Int& riMVPIdx);
-  Void parseSkipFlag(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth);
-  Void parseCUTransquantBypassFlag(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth);
-  Void parseSplitFlag(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth);
-  Void parseMergeFlag(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth, UInt uiPUIdx);
-  Void parseMergeIndex(TComDataCU* pcCU, UInt& ruiMergeIndex);
-  Void parsePartSize(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth);
-  Void parsePredMode(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth);
-  Void parseIntraDirLumaAng(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth);
-  Void parseIntraDirChroma(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth);
-  Void parseInterDir(TComDataCU* pcCU, UInt& ruiInterDir, UInt uiAbsPartIdx);
-  Void parseRefFrmIdx(TComDataCU* pcCU, Int& riRefFrmIdx, RefPicList eRefList);
-  Void parseMvd(TComDataCU* pcCU, UInt uiAbsPartAddr, UInt uiPartIdx, UInt uiDepth, RefPicList eRefList);
-  Void parseCrossComponentPrediction(TComTU& rTu, ComponentID compID);
-  Void parseTransformSubdivFlag(UInt& ruiSubdivFlag, UInt uiLog2TransformBlockSize);
-  Void parseQtCbf(TComTU& rTu, const ComponentID compID, const Bool lowestLevel);
-  Void parseQtRootCbf(UInt uiAbsPartIdx, UInt& uiQtRootCbf);
+  //Void parseMVPIdx(Int& riMVPIdx);
+  //Void parseSkipFlag(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth);
+  //Void parseCUTransquantBypassFlag(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth);
+  //Void parseSplitFlag(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth);
+  //Void parseMergeFlag(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth, UInt uiPUIdx);
+  //Void parseMergeIndex(TComDataCU* pcCU, UInt& ruiMergeIndex);
+  //Void parsePartSize(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth);
+  //Void parsePredMode(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth);
+  //Void parseIntraDirLumaAng(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth);
+  //Void parseIntraDirChroma(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth);
+  //Void parseInterDir(TComDataCU* pcCU, UInt& ruiInterDir, UInt uiAbsPartIdx);
+  //Void parseRefFrmIdx(TComDataCU* pcCU, Int& riRefFrmIdx, RefPicList eRefList);
+  //Void parseMvd(TComDataCU* pcCU, UInt uiAbsPartAddr, UInt uiPartIdx, UInt uiDepth, RefPicList eRefList);
+  //Void parseCrossComponentPrediction(TComTU& rTu, ComponentID compID);
+  //Void parseTransformSubdivFlag(UInt& ruiSubdivFlag, UInt uiLog2TransformBlockSize);
+  //Void parseQtCbf(TComTU& rTu, const ComponentID compID, const Bool lowestLevel);
+  //Void parseQtRootCbf(UInt uiAbsPartIdx, UInt& uiQtRootCbf);
   Void parseDeltaQP(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth);
-  Void parseChromaQpAdjustment(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth);
-  Void parseIPCMInfo(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth);
-  Void parseCoeffNxN(TComTU& rTu, ComponentID compID);
-  Void parseTransformSkipFlags(TComTU& rTu, ComponentID component);
-  Void parseExplicitRdpcmMode(TComTU& rTu, ComponentID compID);
+  //Void parseChromaQpAdjustment(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth);
+  //Void parseIPCMInfo(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth);
+  //Void parseCoeffNxN(TComTU& rTu, ComponentID compID);
+  //Void parseTransformSkipFlags(TComTU& rTu, ComponentID component);
+  //Void parseExplicitRdpcmMode(TComTU& rTu, ComponentID compID);
 
 
 protected:
   // Override SyntaxElementParser virtual methods to make them output decoded
-  //   decoded bits to the debraided bitstream
+  //   decoded bits to the xml bitstream
   Void xReadCode(UInt length, UInt& val);
   Void xReadUvlc(UInt& val);
   Void xReadSvlc(Int& val);
   Void xReadFlag(UInt& val);
   Void xReadRbspTrailingBits();
+
+
+  // Override TDecCavlc virtual methods to output start and end xml tags
+  //   to the xml stream
+  Void parseShortTermRefPicSet(TComSPS* sps, TComReferencePictureSet* rps, Int idx);
 };
 
 

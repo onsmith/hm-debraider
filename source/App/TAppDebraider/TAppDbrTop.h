@@ -106,6 +106,9 @@ protected:
   // Opens an ifstream for reading the source hevc bitstream
   Void xOpenInputStream(ifstream& stream) const;
 
+  // Opens an ofstream for writing the debraided xml stream
+  Void xOpenOutputStream(ofstream& stream) const;
+
 
   /**
    * Access Unit management
@@ -128,8 +131,8 @@ protected:
   // Overwrites the default configuration for output bit depth
   Void xSetOutputBitDepths(const BitDepths& bitDepths);
 
-  // Copies a nal unit body directly to a bitstream
-  Void xCopyNaluBodyToStream(const InputNALUnit& nalu, TComOutputBitstream& bitstream);
+  // Copies a nal unit body directly into an xml writer
+  Void xWriteRawNaluBody(const InputNALUnit& nalu, TDbrXmlWriter& xmlWriter);
 
   // True if a nal unit's contents need to be debraided
   Bool xIsNalUnitDecoded(NalUnitType nalUnitType) const;

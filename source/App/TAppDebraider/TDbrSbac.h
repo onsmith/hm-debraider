@@ -42,7 +42,7 @@
 #pragma once
 
 #include "TDbrBinCABAC.h"
-#include "TDbrStreamSet.h"
+#include "TDbrXmlWriter.h"
 
 #include "TLibDecoder/TDecSbac.h"
 
@@ -53,8 +53,8 @@
 
 class TDbrSbac : public TDecSbac {
 protected:
-  // Stores a set of debraided output bitstreams as a TDbrStreamSet object
-  TDbrStreamSet* bitstreams;
+  // Stores a xml writer for outputting xml tags
+  TDbrXmlWriter* xmlWriter;
 
   // Stores a modified cabac reader that decodes the input bitstream while
   //   transparently outputting all symbols read to the current debraided
@@ -70,9 +70,9 @@ public:
   ~TDbrSbac() = default;
 
 
-  // Bitstream set management
-  Void setBitstreams(TDbrStreamSet* bitstreams);
-  TDbrStreamSet* getBitstreams();
+  // Xml writer management
+  Void setXmlWriter(TDbrXmlWriter* xmlWriter);
+  TDbrXmlWriter* setXmlWriter();
 
 
   // Cabac reader management
@@ -81,10 +81,10 @@ public:
 
   // Override TDecEntropyIf virtual methods to set the output bitstream before
   //   parsing
-  Void parseVPS(TComVPS* pcVPS);
-  Void parseSPS(TComSPS* pcSPS);
-  Void parsePPS(TComPPS* pcPPS);
-  Void parseSliceHeader(TComSlice* pcSlice, ParameterSetManager* parameterSetManager, const Int prevTid0POC);
+  //Void parseVPS(TComVPS* pcVPS);
+  //Void parseSPS(TComSPS* pcSPS);
+  //Void parsePPS(TComPPS* pcPPS);
+  //Void parseSliceHeader(TComSlice* pcSlice, ParameterSetManager* parameterSetManager, const Int prevTid0POC);
   Void parseTerminatingBit(UInt& ruilsLast);
   Void parseRemainingBytes(Bool noTrailingBytesExpected);
   Void parseMVPIdx(Int& riMVPIdx);

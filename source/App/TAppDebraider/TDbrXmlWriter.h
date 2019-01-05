@@ -33,65 +33,83 @@
 
 
 /**
- * \file     rbrmain.cpp
- * \project  TAppRebraider
- * \brief    Rebraider application main
+ *  \file     TDbrXmlWriter.h
+ *  \project  TAppDebraider
+ *  \brief    Debraider XML writer class header
  */
 
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <time.h>
-#include "TAppRbrTop.h"
+#pragma once
+
+#include <string>
+#include <fstream>
+
+#include "TLibCommon/CommonDef.h"
+#include "TLibDecoder/NALread.h"
 
 
-using std::printf;
-
-
-//! \ingroup TAppRebraider
+//! \ingroup TAppDebraider
 //! \{
 
 
-int main(int argc, char* argv[]) {
-  // Output version information
-  fprintf(stdout, "\n");
-  fprintf(stdout, "HM software: Transrater Version [%s] (including RExt)", NV_VERSION);
-  fprintf(stdout, NVM_ONOS );
-  fprintf(stdout, NVM_COMPILEDBY);
-  fprintf(stdout, NVM_BITS);
-  fprintf(stdout, "\n");
+class TDbrXmlWriter {
+private:
+  // Stores an ostream for writing xml
+  std::ostream* stream;
 
-  // Create rebraider
-  TAppRbrTop rebraider;
+  // Allows the writer to be temporarily disabled
+  Bool isWritable;
 
-  // Parse configuration
-  if (!rebraider.parseCfg(argc, argv)) {
-    return EXIT_FAILURE;
+
+public:
+  // Constructors
+  TDbrXmlWriter();
+  TDbrXmlWriter(std::ostream& stream);
+
+
+  // Stream management
+  std::ostream* getStream();
+  Void setStream(std::ostream* stream);
+
+
+  // Stream enabled/disabled status management
+  Bool isWritingEnabled() const;
+  Void enableWriting();
+  Void disableWriting();
+
+
+  // Tag output
+  Void writeOpenTag(const std::string& tagName);
+  Void writeCloseTag(const std::string& tagName);
+
+
+  // Nalu output
+  Void writeOpenTag(const InputNALUnit& nalu);
+
+
+  // Value output
+  template<typename T>
+  Void writeValueTag(const std::string& tagName, T body) {
+    if (isWritable) {
+      *stream <<
+        "<" << tagName << ">" <<
+        body <<
+        "</" << tagName << ">\n";
+    }
   }
 
-  // Capture starting time
-  clock_t startTime = clock();
 
-  // Rebraid video
-  rebraider.rebraid();
-
-  // Capture ending time
-  clock_t endTime = clock();
-
-  // Output timing information
-  Double elapsedTime = (Double) (endTime - startTime) / CLOCKS_PER_SEC;
-  printf("\n Total Time: %12.3f sec.\n", elapsedTime);
-
-  // Report errors
-  Int returnCode = EXIT_SUCCESS;
-  if (rebraider.numDecodingErrorsDetected() != 0) {
-    printf("\n\n***ERROR*** A decoding mismatch occured: signalled md5sum does not match\n");
-    return EXIT_FAILURE;
+  // Value output with bits
+  template<typename T>
+  Void writeValueTag(const std::string& tagName, T body, UInt numBits) {
+    if (isWritable) {
+      *stream <<
+        "<" << tagName << " bits=\"" << numBits << "\">" <<
+        body <<
+        "</" << tagName << ">\n";
+    }
   }
-
-  // Terminate
-  return returnCode;
-}
+};
 
 
 //! \}

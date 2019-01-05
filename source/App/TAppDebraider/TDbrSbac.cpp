@@ -1,13 +1,13 @@
 #include "TDbrSbac.h"
 
 
-Void TDbrSbac::setBitstreams(TDbrStreamSet* bitstreams) {
-  this->bitstreams = bitstreams;
+Void TDbrSbac::setXmlWriter(TDbrXmlWriter* xmlWriter) {
+  this->xmlWriter = xmlWriter;
 }
 
 
-TDbrStreamSet* TDbrSbac::getBitstreams() {
-  return bitstreams;
+TDbrXmlWriter* TDbrSbac::setXmlWriter() {
+  return xmlWriter;
 }
 
 
@@ -16,301 +16,265 @@ Void TDbrSbac::setCabacReader(TDbrBinCABAC* cabacReader) {
 }
 
 
-Void TDbrSbac::parseVPS(TComVPS* pcVPS) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::VPS));
-  TDecSbac::parseVPS(pcVPS);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
-}
-
-
-Void TDbrSbac::parseSPS(TComSPS* pcSPS) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::SPS));
-  TDecSbac::parseSPS(pcSPS);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
-}
-
-
-Void TDbrSbac::parsePPS(TComPPS* pcPPS) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::PPS));
-  TDecSbac::parsePPS(pcPPS);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
-}
-
-
-Void TDbrSbac::parseSliceHeader(TComSlice* pcSlice, ParameterSetManager* parameterSetManager, const Int prevTid0POC) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::SLICE));
-  TDecSbac::parseSliceHeader(pcSlice, parameterSetManager, prevTid0POC);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
-}
-
-
 Void TDbrSbac::parseTerminatingBit(UInt& ruilsLast) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  TComBitIf* newOutputBitstream = &bitstreams->getBitstream(TDbrStreamSet::STREAM::SLICE);
-  cabacReader->setOutputBitstream(newOutputBitstream);
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("terminating-bit");
   TDecSbac::parseTerminatingBit(ruilsLast);
-  if (ruilsLast == 1) {
-    newOutputBitstream->writeAlignZero();
-  }
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("terminating-bit");
 }
 
 
 Void TDbrSbac::parseRemainingBytes(Bool noTrailingBytesExpected) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::SLICE));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("remaining-bytes");
   TDecSbac::parseRemainingBytes(noTrailingBytesExpected);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("remaining-bytes");
 }
 
 
 Void TDbrSbac::parseMVPIdx(Int& riMVPIdx) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::MVP_INDEX));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("mv-pred-index");
   TDecSbac::parseMVPIdx(riMVPIdx);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("mv-pred-index");
 }
 
 
 Void TDbrSbac::parseSkipFlag(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::SKIP_FLAG));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("skip-flag");
   TDecSbac::parseSkipFlag(pcCU, uiAbsPartIdx, uiDepth);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("skip-flag");
 }
 
 
 Void TDbrSbac::parseCUTransquantBypassFlag(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::TQ_BYPASS_FLAG));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("tq-bypass-flag");
   TDecSbac::parseCUTransquantBypassFlag(pcCU, uiAbsPartIdx, uiDepth);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("tq-bypass-flag");
 }
 
 
 Void TDbrSbac::parseSplitFlag(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::SPLIT_FLAG));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("split-flag");
   TDecSbac::parseSplitFlag(pcCU, uiAbsPartIdx, uiDepth);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("split-flag");
 }
 
 
 Void TDbrSbac::parseMergeFlag(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth, UInt uiPUIdx) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::MERGE_FLAG));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("merge-flag");
   TDecSbac::parseMergeFlag(pcCU, uiAbsPartIdx, uiDepth, uiPUIdx);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("merge-flag");
 }
 
 
 Void TDbrSbac::parseMergeIndex(TComDataCU* pcCU, UInt& ruiMergeIndex) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::MERGE_INDEX));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("merge-index");
   TDecSbac::parseMergeIndex(pcCU, ruiMergeIndex);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("merge-index");
 }
 
 
 Void TDbrSbac::parsePartSize(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::PART_SIZE));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("part-size");
   TDecSbac::parsePartSize(pcCU, uiAbsPartIdx, uiDepth);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("part-size");
 }
 
 
 Void TDbrSbac::parsePredMode(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::PRED_MODE));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("pred-mode");
   TDecSbac::parsePredMode(pcCU, uiAbsPartIdx, uiDepth);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("pred-mode");
 }
 
 
 Void TDbrSbac::parseIntraDirLumaAng(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::INTRA_DIR_LUMA));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("intra-dir-luma");
   TDecSbac::parseIntraDirLumaAng(pcCU, uiAbsPartIdx, uiDepth);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("intra-dir-luma");
 }
 
 
 Void TDbrSbac::parseIntraDirChroma(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::INTRA_DIR_CHROMA));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("intra-dir-chroma");
   TDecSbac::parseIntraDirChroma(pcCU, uiAbsPartIdx, uiDepth);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("intra-dir-chroma");
 }
 
 
 Void TDbrSbac::parseInterDir(TComDataCU* pcCU, UInt& ruiInterDir, UInt uiAbsPartIdx) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::INTER_DIR));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("inter-dir");
   TDecSbac::parseInterDir(pcCU, ruiInterDir, uiAbsPartIdx);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("inter-dir");
 }
 
 
 Void TDbrSbac::parseRefFrmIdx(TComDataCU* pcCU, Int& riRefFrmIdx, RefPicList eRefList) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::REF_FRAME_INDEX));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("reference-frame-index");
   TDecSbac::parseRefFrmIdx(pcCU, riRefFrmIdx, eRefList);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("reference-frame-index");
 }
 
 
 Void TDbrSbac::parseMvd(TComDataCU* pcCU, UInt uiAbsPartAddr, UInt uiPartIdx, UInt uiDepth, RefPicList eRefList) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::MVD));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("mv-delta");
   TDecSbac::parseMvd(pcCU, uiAbsPartAddr, uiPartIdx, uiDepth, eRefList);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("mv-delta");
 }
 
 
 Void TDbrSbac::parseCrossComponentPrediction(TComTU& rTu, ComponentID compID) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::CROSS_COMP_PRED));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("cross-comp-pred");
   TDecSbac::parseCrossComponentPrediction(rTu, compID);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("cross-comp-pred");
 }
 
 
 Void TDbrSbac::parseTransformSubdivFlag(UInt& ruiSubdivFlag, UInt uiLog2TransformBlockSize) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::TU_SUBDIV_FLAG));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("tu-subdiv-flag");
   TDecSbac::parseTransformSubdivFlag(ruiSubdivFlag, uiLog2TransformBlockSize);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("tu-subdiv-flag");
 }
 
 
 Void TDbrSbac::parseQtCbf(TComTU& rTu, const ComponentID compID, const Bool lowestLevel) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::QT_CBF));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("qt-cbf");
   TDecSbac::parseQtCbf(rTu, compID, lowestLevel);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("qt-cbf");
 }
 
 
 Void TDbrSbac::parseQtRootCbf(UInt uiAbsPartIdx, UInt& uiQtRootCbf) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::QT_CBF));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("qt-root-cbf");
   TDecSbac::parseQtRootCbf(uiAbsPartIdx, uiQtRootCbf);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("qt-root-cbf");
 }
 
 
 Void TDbrSbac::parseDeltaQP(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::DQP));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("delta-qp");
   TDecSbac::parseDeltaQP(pcCU, uiAbsPartIdx, uiDepth);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("delta-qp");
 }
 
 
 Void TDbrSbac::parseChromaQpAdjustment(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::CHROMA_QP_ADJ));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("chroma-qp-adj");
   TDecSbac::parseChromaQpAdjustment(pcCU, uiAbsPartIdx, uiDepth);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("chroma-qp-adj");
 }
 
 
 Void TDbrSbac::parseIPCMInfo(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::IPCM));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("intra-pcm");
   TDecSbac::parseIPCMInfo(pcCU, uiAbsPartIdx, uiDepth);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("intra-pcm");
 }
 
 
 Void TDbrSbac::parseCoeffNxN(TComTU& rTu, ComponentID compID) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::COEFF));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("coeff");
   TDecSbac::parseCoeffNxN(rTu, compID);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("coeff");
 }
 
 
 Void TDbrSbac::parseTransformSkipFlags(TComTU& rTu, ComponentID component) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::TU_SKIP_FLAG));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("tu-skip-flag");
   TDecSbac::parseTransformSkipFlags(rTu, component);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("tu-skip-flag");
 }
 
 
 Void TDbrSbac::parseExplicitRdpcmMode(TComTU& rTu, ComponentID compID) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::RDPCM));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("rd-pcm");
   TDecSbac::parseExplicitRdpcmMode(rTu, compID);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("rd-pcm");
 }
 
 
 Void TDbrSbac::parseSaoMaxUvlc(UInt& val, UInt maxSymbol) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::SAO_PARAMS));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("sao-max-uvlc");
   TDecSbac::parseSaoMaxUvlc(val, maxSymbol);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("sao-max-uvlc");
 }
 
 
 Void TDbrSbac::parseSaoMerge(UInt& ruiVal) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::SAO_PARAMS));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("sao-merge");
   TDecSbac::parseSaoMerge(ruiVal);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("sao-merge");
 }
 
 
 Void TDbrSbac::parseSaoTypeIdx(UInt& ruiVal) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::SAO_PARAMS));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("sao-type-index");
   TDecSbac::parseSaoTypeIdx(ruiVal);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("sao-type-index");
 }
 
 
 Void TDbrSbac::parseSaoUflc(UInt uiLength, UInt& ruiVal) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::SAO_PARAMS));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("sao-uflc");
   TDecSbac::parseSaoUflc(uiLength, ruiVal);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("sao-uflc");
 }
 
 
 Void TDbrSbac::parseSAOBlkParam(SAOBlkParam& saoBlkParam, Bool* sliceEnabled, Bool leftMergeAvail, Bool aboveMergeAvail, const BitDepths& bitDepths) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::SAO_BLOCK_PARAMS));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("sao-block-params");
   TDecSbac::parseSAOBlkParam(saoBlkParam, sliceEnabled, leftMergeAvail, aboveMergeAvail, bitDepths);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("sao-block-params");
 }
 
 
 Void TDbrSbac::parseSaoSign(UInt& val) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::SAO_PARAMS));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("sao-sign");
   TDecSbac::parseSaoSign(val);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("sao-sign");
 }
 
 
 Void TDbrSbac::parseLastSignificantXY(UInt& uiPosLastX, UInt& uiPosLastY, Int width, Int height, ComponentID component, UInt uiScanIdx) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::LAST_SIG_XY));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("last-sig-xy");
   TDecSbac::parseLastSignificantXY(uiPosLastX, uiPosLastY, width, height, component, uiScanIdx);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("last-sig-xy");
 }
 
 
 Void TDbrSbac::parseScalingList(TComScalingList* scalingList) {
-  TComBitIf* oldOutputBitstream = cabacReader->getOutputBitstream();
-  cabacReader->setOutputBitstream(&bitstreams->getBitstream(TDbrStreamSet::STREAM::SCALING_LIST));
+  assert(xmlWriter != nullptr);
+  xmlWriter->writeOpenTag("scaling-list");
   TDecSbac::parseScalingList(scalingList);
-  cabacReader->setOutputBitstream(oldOutputBitstream);
+  xmlWriter->writeCloseTag("scaling-list");
 }

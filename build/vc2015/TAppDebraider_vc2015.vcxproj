@@ -200,8 +200,8 @@
     <ClCompile Include="..\..\source\App\TAppDebraider\TDbrBinCABAC.cpp" />
     <ClCompile Include="..\..\source\App\TAppDebraider\TDbrCavlc.cpp" />
     <ClCompile Include="..\..\source\App\TAppDebraider\TDbrSbac.cpp" />
-    <ClCompile Include="..\..\source\App\TAppDebraider\TDbrStreamSet.cpp" />
     <ClCompile Include="..\..\source\App\TAppDebraider\TDbrTop.cpp" />
+    <ClCompile Include="..\..\source\App\TAppDebraider\TDbrXmlWriter.cpp" />
     <ClCompile Include="..\..\source\App\TAppDebraider\TTraPictureBuffer.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -210,8 +210,8 @@
     <ClInclude Include="..\..\source\App\TAppDebraider\TDbrBinCABAC.h" />
     <ClInclude Include="..\..\source\App\TAppDebraider\TDbrCavlc.h" />
     <ClInclude Include="..\..\source\App\TAppDebraider\TDbrSbac.h" />
-    <ClInclude Include="..\..\source\App\TAppDebraider\TDbrStreamSet.h" />
     <ClInclude Include="..\..\source\App\TAppDebraider\TDbrTop.h" />
+    <ClInclude Include="..\..\source\App\TAppDebraider\TDbrXmlWriter.h" />
     <ClInclude Include="..\..\source\App\TAppDebraider\TTraPictureBuffer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

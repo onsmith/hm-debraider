@@ -46,7 +46,6 @@
 #include <assert.h>
 
 #include "TAppDbrTop.h"
-#include "TDbrStreamSet.h"
 
 #include "TLibDecoder/AnnexBread.h"
 #include "TLibDecoder/NALread.h"
@@ -88,7 +87,7 @@ UInt TAppDbrTop::numDecodingErrorsDetected() const {
  */
 Void TAppDbrTop::debraid() {
   // Picture order count
-  Int poc;
+  Int poc = -1;
 
   // Pointer to decoded picture buffer
   TComList<TComPic*>* dpb = nullptr;
@@ -99,8 +98,12 @@ Void TAppDbrTop::debraid() {
   InputByteStream inputByteStream(inputStream);
 
   // Open output h265 bitstream for writing transcoded video
-  TDbrStreamSet outputStreams;
-  outputStreams.open(m_outputFileName);
+  ofstream outputStream;
+  xOpenOutputStream(outputStream);
+
+  // Create buffer ostream
+  ostringstream outputBuffer;
+  TDbrXmlWriter xmlWriter(outputBuffer);
 
   // Reset decoded yuv output stream
   if (m_decodedYUVOutputStream.isOpen()) {
@@ -112,8 +115,9 @@ Void TAppDbrTop::debraid() {
     TDbrBinCABAC& cabacReader  = m_decoder.getCabacReader();
     TDbrSbac&     sbacDecoder  = m_decoder.getSbacDecoder();
     TDbrCavlc&    cavlcDecoder = m_decoder.getCavlcDecoder();
-    cavlcDecoder.setBitstreams(&outputStreams);
-    sbacDecoder.setBitstreams(&outputStreams);
+    cavlcDecoder.setXmlWriter(&xmlWriter);
+    sbacDecoder.setXmlWriter(&xmlWriter);
+    cabacReader.setXmlWriter(&xmlWriter);
     sbacDecoder.setCabacReader(&cabacReader);
     sbacDecoder.init(&cabacReader);
     xConfigDecoder();
@@ -160,6 +164,7 @@ Void TAppDbrTop::debraid() {
     } else {
       // Parse nal unit header
       read(nalu);
+      xmlWriter.writeOpenTag(nalu);
 
       // Determine if the nal unit comes from a temporal ID marked for decoding
       Bool willDecodeTemporalId = (
@@ -170,19 +175,17 @@ Void TAppDbrTop::debraid() {
       if (willDecodeTemporalId && xWillDecodeLayer(nalu.m_nuhLayerId)) {
         wasNewPictureFound = m_decoder.decode(nalu, m_iSkipFrame, m_lastOutputPOC);
         if (!wasNewPictureFound && !xIsNalUnitDecoded(nalu.m_nalUnitType)) {
-          xCopyNaluBodyToStream(nalu, outputStreams.getBitstream(TDbrStreamSet::STREAM::OTHER));
+          xWriteRawNaluBody(nalu, xmlWriter);
         }
       } else {
-        xCopyNaluBodyToStream(nalu, outputStreams.getBitstream(TDbrStreamSet::STREAM::OTHER));
+        xWriteRawNaluBody(nalu, xmlWriter);
       }
 
       // Flush and clear the bitstreams
       if (!wasNewPictureFound) {
-        outputStreams.writeNalHeader(nalu);
-        outputStreams.byteAlign();
-        outputStreams.writeLengths();
-        outputStreams.flush();
-        outputStreams.clear();
+        xmlWriter.writeCloseTag("nalu");
+        outputStream << outputBuffer.str();
+        outputBuffer.str("");
       }
     }
 
@@ -202,7 +205,7 @@ Void TAppDbrTop::debraid() {
 #else
       inputStream.seekg(initialPositionInInputBitstream - streamoff(3));
       inputByteStream.reset();
-      outputStreams.clear();
+      outputBuffer.str("");
 #endif
     }
 
@@ -283,7 +286,7 @@ Void TAppDbrTop::debraid() {
 
 
 /**
- * Helper method to open an ifstream for reading the source hevc bitstream
+ * Opens an ifstream for reading the source hevc bitstream
  */
 Void TAppDbrTop::xOpenInputStream(ifstream& stream) const {
   stream.open(
@@ -300,6 +303,27 @@ Void TAppDbrTop::xOpenInputStream(ifstream& stream) const {
     exit(EXIT_FAILURE);
   }
 }
+
+
+/**
+ * Opens an ofstream for writing the debraided xml stream
+ */
+Void TAppDbrTop::xOpenOutputStream(ofstream& stream) const {
+  stream.open(
+    m_outputFileName.c_str(),
+    ifstream::out
+  );
+
+  if (!stream.is_open() || !stream.good()) {
+    fprintf(
+      stderr,
+      "\nfailed to open bitstream file `%s' for writing\n",
+      m_outputFileName.c_str()
+    );
+    exit(EXIT_FAILURE);
+  }
+}
+
 
 
 /**
@@ -719,14 +743,18 @@ Bool TAppDbrTop::xIsFirstNalUnitOfNewAccessUnit(const NALUnit& nalu) const {
 
 
 /**
- * Copies a nal unit body directly to a bitstream
+ * Copies a nal unit body directly into an xml writer
  */
-Void TAppDbrTop::xCopyNaluBodyToStream(const InputNALUnit& nalu, TComOutputBitstream& bitstream) {
-  const std::vector<UChar>& naluFifo = nalu.getBitstream().getFifo();
-        std::vector<UChar>& dstFifo  = bitstream.getFIFO();
-  dstFifo.resize(naluFifo.size() - 2);
-  std::copy(naluFifo.begin() + 2, naluFifo.end(), dstFifo.begin());
-  //dstFifo = naluFifo;
+Void TAppDbrTop::xWriteRawNaluBody(const InputNALUnit& nalu, TDbrXmlWriter& xmlWriter) {
+  const std::vector<UChar>& fifo = nalu.getBitstream().getFifo();
+  std::ostream& underlyingStream = *xmlWriter.getStream();
+  xmlWriter.writeOpenTag("raw");
+  underlyingStream.write(
+    reinterpret_cast<const char*>(fifo.data() + 2),
+    (fifo.size() - 2) * sizeof(UChar)
+  );
+  underlyingStream << "\n";
+  xmlWriter.writeCloseTag("raw");
 }
 
 

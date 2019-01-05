@@ -41,21 +41,25 @@
 
 #pragma once
 
-#include "TDbrStreamSet.h"
+#include "TDbrXmlWriter.h"
 
 #include "TLibDecoder/TDecBinCoderCABAC.h"
-#include "TLibEncoder/SyntaxElementWriter.h"
 
 
 //! \ingroup TAppDebraider
 //! \{
 
 
-class TDbrBinCABAC : public TDecBinCABAC, protected SyntaxElementWriter {
+class TDbrBinCABAC : public TDecBinCABAC {
+protected:
+  // Stores a xml writer for outputting xml tags
+  TDbrXmlWriter* xmlWriter;
+
+
 public:
-  // Getter/setter for the output bitstream
-  TComBitIf* getOutputBitstream();
-  Void setOutputBitstream(TComBitIf* outputBitstream);
+  // Xml writer management
+  Void setXmlWriter(TDbrXmlWriter* xmlWriter);
+  TDbrXmlWriter* setXmlWriter();
 
 
   // Override virtual TDecBinIf methods and make them output bits to debraided
