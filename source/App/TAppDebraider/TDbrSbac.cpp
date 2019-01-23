@@ -1,4 +1,6 @@
 #include "TDbrSbac.h"
+#include "TLibCommon/TComTU.h"
+#include "TLibEncoder/TEncEntropy.h"
 
 
 Void TDbrSbac::setXmlWriter(TDbrXmlWriter* xmlWriter) {
@@ -277,4 +279,415 @@ Void TDbrSbac::parseScalingList(TComScalingList* scalingList) {
   xmlWriter->writeOpenTag("scaling-list");
   TDecSbac::parseScalingList(scalingList);
   xmlWriter->writeCloseTag("scaling-list");
+}
+
+
+
+
+/**
+ * Gets the coded intra angle for a particular transform block
+ */
+Int getCodedIntraAngle(const TComTU &tu, const ComponentID component) {
+  const TComDataCU& cu               = *tu.getCU();
+  const UInt        uiAbsPartIdx     = tu.GetAbsPartIdxTU(component);
+  const Bool        isLumaChannel    = isLuma(component);
+  const Bool        isIntraPredicted = cu.isIntra(uiAbsPartIdx);
+
+  // If the block isn't intra-coded, we can't get the intra mode
+  if (!isIntraPredicted) {
+    return -1;
+  }
+
+  // Get the coded intra mode
+  Int intraAngle = cu.getIntraDir(toChannelType(component), uiAbsPartIdx);
+
+  // If this is the luma channel, then we're done
+  if (isLumaChannel) {
+    return intraAngle;
+  }
+
+  // If we are borrowing from the luma channel, then get the luma coded mode
+  if (intraAngle == DM_CHROMA_IDX) {
+    const TComSlice& slice = *cu.getSlice();
+    const TComSPS&   sps   = *slice.getSPS();
+    const UInt partsPerMinCU =
+      1 << (2 * (sps.getMaxTotalCUDepth() - sps.getLog2DiffMaxMinCodingBlockSize()));
+
+    intraAngle = cu.getIntraDir(
+      CHANNEL_TYPE_LUMA,
+      getChromasCorrespondingPULumaIdx(uiAbsPartIdx, tu.GetChromaFormat(), partsPerMinCU)
+    );
+  }
+
+  // If 4:2:2 chroma subsampling, adjust the intra angle
+  if (tu.GetChromaFormat() == CHROMA_422) {
+    intraAngle = g_chroma422IntraAngleMappingTable[intraAngle];
+  }
+
+  return intraAngle;
+}
+
+
+
+
+/**
+ * Determines if a transform block is implicitly RDPCM-coded
+ */
+Bool isImplicitlyRDPCMCoded(const TComTU &tu, const ComponentID component) {
+  const TComDataCU& cu = *tu.getCU();
+  const UInt uiAbsPartIdx = tu.GetAbsPartIdxTU(component);
+  const Bool isIntraPredicted = cu.isIntra(uiAbsPartIdx); 
+  const Bool isTransformSkipped = cu.getTransformSkip(uiAbsPartIdx, component);
+
+  if (isTransformSkipped && isIntraPredicted && cu.isRDPCMEnabled(uiAbsPartIdx)) {
+    const Int intraMode = getCodedIntraAngle(tu, component);
+    return (intraMode == HOR_IDX || intraMode == VER_IDX);
+  } else {
+    return false;
+  }
+}
+
+
+
+
+Void TDbrSbac::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID compID) {
+        TComDataCU&    cu           = *tu.getCU();
+  const UInt           uiAbsPartIdx = tu.GetAbsPartIdxTU(compID);
+  const TComRectangle& tuRect       = tu.getRect(compID);
+  const UInt           tuWidth      = tuRect.width;
+  const UInt           tuHeight     = tuRect.height;
+  const TComSlice&     slice        = *cu.getSlice();
+  const TComSPS&       sps          = *slice.getSPS();
+  const TComPPS&       pps          = *slice.getPPS();
+
+
+  DTRACE_CABAC_VL( g_nSymbolCounter++ )
+  DTRACE_CABAC_T( "\tparseCoeffNxN()\teType=" )
+  DTRACE_CABAC_V( compID )
+  DTRACE_CABAC_T( "\twidth=" )
+  DTRACE_CABAC_V( uiWidth )
+  DTRACE_CABAC_T( "\theight=" )
+  DTRACE_CABAC_V( uiHeight )
+  DTRACE_CABAC_T( "\tdepth=" )
+//  DTRACE_CABAC_V( rTu.GetTransformDepthTotalAdj(compID) )
+  DTRACE_CABAC_V( rTu.GetTransformDepthTotal() )
+  DTRACE_CABAC_T( "\tabspartidx=" )
+  DTRACE_CABAC_V( uiAbsPartIdx )
+  DTRACE_CABAC_T( "\ttoCU-X=" )
+  DTRACE_CABAC_V( pcCU->getCUPelX() )
+  DTRACE_CABAC_T( "\ttoCU-Y=" )
+  DTRACE_CABAC_V( pcCU->getCUPelY() )
+  DTRACE_CABAC_T( "\tCU-addr=" )
+  DTRACE_CABAC_V(  pcCU->getCtuRsAddr() )
+  DTRACE_CABAC_T( "\tinCU-X=" )
+//  DTRACE_CABAC_V( g_auiRasterToPelX[ g_auiZscanToRaster[uiAbsPartIdx] ] )
+  DTRACE_CABAC_V( g_auiRasterToPelX[ g_auiZscanToRaster[rTu.GetAbsPartIdxTU(compID)] ] )
+  DTRACE_CABAC_T( "\tinCU-Y=" )
+// DTRACE_CABAC_V( g_auiRasterToPelY[ g_auiZscanToRaster[uiAbsPartIdx] ] )
+  DTRACE_CABAC_V( g_auiRasterToPelY[ g_auiZscanToRaster[rTu.GetAbsPartIdxTU(compID)] ] )
+  DTRACE_CABAC_T( "\tpredmode=" )
+  DTRACE_CABAC_V(  pcCU->getPredictionMode( uiAbsPartIdx ) )
+  DTRACE_CABAC_T( "\n" )
+
+
+  // Check TU size
+  if (tuWidth > sps.getMaxTrSize()) {
+    std::cerr << "ERROR: codeCoeffNxN was passed a TU with dimensions larger than the maximum allowed size" << std::endl;
+    assert(false);
+    exit(1);
+  }
+
+
+  // Count total number of significant coefficients
+  const UInt totalNumSigCoeffs =
+    TEncEntropy::countNonZeroCoeffs(pcCoef, tuWidth * tuHeight);
+  if (totalNumSigCoeffs == 0) {
+    std::cerr << "ERROR: codeCoeffNxN called for empty TU!" << std::endl;
+    assert(false);
+    exit(1);
+  }
+
+
+  // Prepare coding block parameters
+  const UInt        tuWidthLog2            = g_aucConvertToBit[tuWidth] + 2;
+  const UInt        tuHeightLog2           = g_aucConvertToBit[tuHeight] + 2;
+  const ChannelType channelType            = toChannelType(compID);
+  const Bool        isPrecisionExtended    = sps.getSpsRangeExtension().getExtendedPrecisionProcessingFlag();
+  const Bool        alignCABACBeforeBypass = sps.getSpsRangeExtension().getCabacBypassAlignmentEnabledFlag();
+  const Int         maxLog2TrDynamicRange  = sps.getMaxLog2TrDynamicRange(channelType);
+        Bool        isSignHidingEnabled    = pps.getSignDataHidingEnabledFlag();
+
+
+  // Implicit RDPCM mode
+  if (cu.getCUTransquantBypass(uiAbsPartIdx) || isImplicitlyRDPCMCoded(tu, compID)) {
+    isSignHidingEnabled = false;
+    if (!cu.isIntra(uiAbsPartIdx) && cu.isRDPCMEnabled(uiAbsPartIdx)) {
+      codeExplicitRdpcmMode(tu, compID);
+    }
+  }
+
+
+  // Transform skip mode
+  if (pps.getUseTransformSkip()) {
+    codeTransformSkipFlags(tu, compID);
+    if (cu.getTransformSkip(uiAbsPartIdx, compID) && !cu.isIntra(uiAbsPartIdx) && cu.isRDPCMEnabled(uiAbsPartIdx)) {
+      //  This TU has coefficients and is transform skipped. Check whether is inter coded and if yes encode the explicit RDPCM mode
+      codeExplicitRdpcmMode(tu, compID);
+
+      //  Sign data hiding is force-disabled for horizontal and vertical explicit RDPCM modes
+      if (cu.getExplicitRdpcmMode(compID, uiAbsPartIdx) != RDPCM_OFF) {
+        isSignHidingEnabled = false;
+      }
+    }
+  }
+
+
+  // TODO: Define these variables
+  const Bool  bUseGolombRiceParameterAdaptation = sps.getSpsRangeExtension().getPersistentRiceAdaptationEnabledFlag();
+        UInt& currentGolombRiceStatistic        = m_golombRiceAdaptationStatistics[tu.getGolombRiceStatisticsIndex(compID)];
+
+
+  // Get the scan map for this transform block
+  TUEntropyCodingParameters codingParameters;
+  getTUEntropyCodingParameters(codingParameters, tu, compID);
+
+  // Tracks which 4x4 coefficient groups contain significant coefficients
+  UInt isGroupSignificant[MLS_GRP_NUM];
+  memset(isGroupSignificant, 0, sizeof(UInt) * MLS_GRP_NUM);
+
+  // The index of the last significant coefficient in scan order
+  Int lastSigCoeffScanOrder = 0;
+  
+  // The index of the last significant coefficient in block order
+  Int lastSigCoeffBlockOrder;
+
+  // Scan through all coefficients to set up lastSigCoeffScanOrder,
+  //   lastSigCoeffBlockOrder, and the isGroupSignificant array
+  for (UInt numSigCoeffs = 0, numCoeffs = 0; numSigCoeffs < totalNumSigCoeffs; numCoeffs++) {
+    lastSigCoeffScanOrder  = numCoeffs;
+    lastSigCoeffBlockOrder = codingParameters.scan[lastSigCoeffScanOrder];
+
+    if (pcCoef[lastSigCoeffBlockOrder] != 0) {
+      UInt posY = lastSigCoeffBlockOrder >> tuWidthLog2;
+      UInt posX = lastSigCoeffBlockOrder - (posY << tuWidthLog2);
+      UInt groupIndex =
+        codingParameters.widthInGroups * (posY >> MLS_CG_LOG2_HEIGHT) +
+                                         (posX >> MLS_CG_LOG2_WIDTH);
+
+      isGroupSignificant[groupIndex] = 1;
+      numSigCoeffs++;
+    }
+  }
+
+
+  // Code position of last coefficient
+  {
+    Int posLastY = lastSigCoeffBlockOrder >> tuWidthLog2;
+    Int posLastX = lastSigCoeffBlockOrder - (posLastY << tuWidthLog2);
+    codeLastSignificantXY(
+      posLastX,
+      posLastY,
+      tuWidth,
+      tuHeight,
+      compID,
+      codingParameters.scanType
+    );
+  }
+
+
+  // Prepare CABAC contexts
+  ContextModel* const baseCoeffGroupContext =
+    m_cCUSigCoeffGroupSCModel.get(0, channelType);
+  ContextModel* const baseContext =
+    m_cCUSigSCModel.get(0, 0) + getSignificanceMapContextOffset(compID);
+
+
+  // The index of the current coefficient in scan order
+  Int curCoeffScanOrder = lastSigCoeffScanOrder;
+
+  // The index of the group containing the last significant coefficient
+  const Int lastSigCGIndex = lastSigCoeffScanOrder >> MLS_CG_SIZE;
+
+  // TODO
+  UInt c1 = 1;
+
+  // Iterate over the 4x4 coefficient groups
+  for (Int cgIndex = lastSigCGIndex; cgIndex >= 0; cgIndex--) {
+    UInt coeffSigns       = 0;
+    Int  numSigCoeffsInCG = 0;
+    Int  firstSigPosInCG  = 1 << MLS_CG_SIZE;
+    Int  lastSigPosInCG   = -1;
+
+    Int  absCoeff[1 << MLS_CG_SIZE];
+
+    Bool isEscapeDataPresentInGroup = false;
+    UInt golombRiceParam            = currentGolombRiceStatistic / RExt__GOLOMB_RICE_INCREMENT_DIVISOR;
+    Bool updateGolombRiceStatistics = bUseGolombRiceParameterAdaptation; // leave the statistics at 0 when not using the adaptation system
+
+    // Handle the last significant coefficient
+    if (curCoeffScanOrder == lastSigCoeffScanOrder) {
+      absCoeff[0]      = static_cast<Int>(abs(pcCoef[lastSigCoeffBlockOrder]));
+      coeffSigns       = (pcCoef[lastSigCoeffBlockOrder] < 0);
+      firstSigPosInCG  = curCoeffScanOrder;
+      lastSigPosInCG   = curCoeffScanOrder;
+      numSigCoeffsInCG = 1;
+      curCoeffScanOrder--;
+    }
+
+    // Calculate the (x, y) location of the current coefficient group
+    const Int cgBlockPos  = codingParameters.scanCG[cgIndex];
+    const Int cgBlockPosY = cgBlockPos / codingParameters.widthInGroups;
+    const Int cgBlockPosX = cgBlockPos - (cgBlockPosY * codingParameters.widthInGroups);
+
+    // Signal whether this block contains significant coefficients
+    if (cgIndex == lastSigCGIndex || cgIndex == 0) {
+      isGroupSignificant[cgBlockPos] = 1;
+    } else {
+      UInt isCGSig = (isGroupSignificant[cgBlockPos] != 0) ? 1 : 0;
+      UInt sigCGContext = TComTrQuant::getSigCoeffGroupCtxInc(
+        isGroupSignificant,
+        cgBlockPosX,
+        cgBlockPosY,
+        codingParameters.widthInGroups,
+        codingParameters.heightInGroups
+      );
+      m_pcBinIf->encodeBin(isCGSig, baseCoeffGroupContext[sigCGContext]);
+    }
+
+    // Signal whether each coefficient in the 4x4 group is significant
+    //   (significant_coeff_flag)
+    {
+      Int lastCoeffInGroup = cgIndex << MLS_CG_SIZE;
+      if (isGroupSignificant[cgBlockPos]) {
+        const Int sigCoeffContext = TComTrQuant::calcPatternSigCtx(
+          isGroupSignificant,
+          cgBlockPosX,
+          cgBlockPosY,
+          codingParameters.widthInGroups,
+          codingParameters.heightInGroups
+        );
+
+        // Loop through all coefficients in the 4x4 block
+        for ( ; curCoeffScanOrder >= lastCoeffInGroup; curCoeffScanOrder--) {
+          UInt coeffBlockPos = codingParameters.scan[curCoeffScanOrder];
+          UInt isCoeffSig = (pcCoef[coeffBlockPos] != 0);
+          if (curCoeffScanOrder > lastCoeffInGroup || cgIndex == 0 || numSigCoeffsInCG) {
+            UInt uiCtxSig = TComTrQuant::getSigCtxInc(
+              sigCoeffContext,
+              codingParameters,
+              curCoeffScanOrder,
+              tuWidthLog2,
+              tuHeightLog2,
+              channelType
+            );
+            m_pcBinIf->encodeBin(isCoeffSig, baseContext[uiCtxSig]);
+          }
+          if (isCoeffSig) {
+            absCoeff[numSigCoeffsInCG] = static_cast<Int>(abs(pcCoef[coeffBlockPos]));
+            numSigCoeffsInCG++;
+            coeffSigns = (coeffSigns << 1) + (pcCoef[coeffBlockPos] < 0 ? 1 : 0);
+            if (lastSigPosInCG == -1) {
+              lastSigPosInCG = curCoeffScanOrder;
+            }
+            firstSigPosInCG = curCoeffScanOrder;
+          }
+        }
+      } else {
+        curCoeffScanOrder = lastCoeffInGroup - 1;
+      }
+    }
+
+    // Nothing left to signal for this group if there there are no significant
+    //   coefficients in it
+    if (numSigCoeffsInCG == 0) {
+      continue;
+    }
+
+    // Can only employ sign hiding if enough coefficients are in the block
+    const Bool canHideSign = (lastSigPosInCG - firstSigPosInCG >= SBH_THRESHOLD);
+
+    const UInt contextSet = getContextSetIndex(compID, cgIndex, c1 == 0);
+    c1 = 1;
+
+    ContextModel* baseContextModel = m_cCUOneSCModel.get(0, 0) + (NUM_ONE_FLAG_CTX_PER_SET * contextSet);
+
+    // Signal whether each significant coefficient is greater than 1
+    Int numC1Flag = min(numSigCoeffsInCG, C1FLAG_NUMBER);
+    Int firstC2FlagIdx = -1;
+    for (Int i = 0; i < numC1Flag; i++) {
+      const UInt symbol = (absCoeff[i] > 1) ? 1 : 0;
+      m_pcBinIf->encodeBin(symbol, baseContextModel[c1]);
+      if (symbol) {
+        c1 = 0;
+
+        if (firstC2FlagIdx == -1) {
+          firstC2FlagIdx = i;
+        } else { // if a greater-than-one has been encountered already this group
+          isEscapeDataPresentInGroup = true;
+        }
+      } else if (0 < c1 && c1 < 3) {
+        c1++;
+      }
+    }
+
+    if (c1 == 0) {
+      baseContextModel = m_cCUAbsSCModel.get(0, 0) + (NUM_ABS_FLAG_CTX_PER_SET * contextSet);
+      if (firstC2FlagIdx != -1) {
+        UInt symbol = absCoeff[firstC2FlagIdx] > 2;
+        m_pcBinIf->encodeBin(symbol, baseContextModel[0]);
+        if (symbol != 0) {
+          isEscapeDataPresentInGroup = true;
+        }
+      }
+    }
+
+    isEscapeDataPresentInGroup = isEscapeDataPresentInGroup || (numSigCoeffsInCG > C1FLAG_NUMBER);
+
+    if (isEscapeDataPresentInGroup && alignCABACBeforeBypass) {
+      m_pcBinIf->align();
+    }
+
+    if (isSignHidingEnabled && canHideSign) {
+      m_pcBinIf->encodeBinsEP(coeffSigns >> 1, numSigCoeffsInCG - 1);
+    } else {
+      m_pcBinIf->encodeBinsEP(coeffSigns, numSigCoeffsInCG);
+    }
+
+    Int iFirstCoeff2 = 1;
+    if (isEscapeDataPresentInGroup) {
+      for (Int idx = 0; idx < numSigCoeffsInCG; idx++) {
+        UInt baseLevel  = (idx < C1FLAG_NUMBER)? (2 + iFirstCoeff2 ) : 1;
+
+        if (absCoeff[ idx ] >= baseLevel) {
+          const UInt escapeCodeValue = absCoeff[idx] - baseLevel;
+
+          xWriteCoefRemainExGolomb(escapeCodeValue, golombRiceParam, isPrecisionExtended, maxLog2TrDynamicRange);
+
+          if (absCoeff[idx] > (3 << golombRiceParam)) {
+            golombRiceParam = bUseGolombRiceParameterAdaptation ? golombRiceParam + 1 : std::min<UInt>(golombRiceParam + 1, 4);
+          }
+
+          if (updateGolombRiceStatistics) {
+            const UInt initialGolombRiceParameter = currentGolombRiceStatistic / RExt__GOLOMB_RICE_INCREMENT_DIVISOR;
+
+            if (escapeCodeValue >= 3 << initialGolombRiceParameter) {
+              currentGolombRiceStatistic++;
+            } else if ((escapeCodeValue * 2) < (1 << initialGolombRiceParameter) && currentGolombRiceStatistic > 0) {
+              currentGolombRiceStatistic--;
+            }
+
+            updateGolombRiceStatistics = false;
+          }
+        }
+
+        if (absCoeff[ idx ] >= 2) {
+          iFirstCoeff2 = 0;
+        }
+      }
+    }
+  }
+
+#if ENVIRONMENT_VARIABLE_DEBUG_AND_TEST
+  printSBACCoeffData(posLastX, posLastY, uiWidth, uiHeight, compID, uiAbsPartIdx, codingParameters.scanType, pcCoef, pcCU->getSlice()->getFinalized());
+#endif
 }
