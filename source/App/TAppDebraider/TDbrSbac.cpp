@@ -418,7 +418,7 @@ Void TDbrSbac::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID compID
         Bool        isSignHidingEnabled    = pps.getSignDataHidingEnabledFlag();
 
 
-  // Implicit RDPCM mode
+  // Code implicit RDPCM mode
   if (cu.getCUTransquantBypass(uiAbsPartIdx) || isImplicitlyRDPCMCoded(tu, compID)) {
     isSignHidingEnabled = false;
     if (!cu.isIntra(uiAbsPartIdx) && cu.isRDPCMEnabled(uiAbsPartIdx)) {
@@ -427,7 +427,7 @@ Void TDbrSbac::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID compID
   }
 
 
-  // Transform skip mode
+  // Code transform skip mode
   if (pps.getUseTransformSkip()) {
     codeTransformSkipFlags(tu, compID);
     if (cu.getTransformSkip(uiAbsPartIdx, compID) && !cu.isIntra(uiAbsPartIdx) && cu.isRDPCMEnabled(uiAbsPartIdx)) {
@@ -447,43 +447,45 @@ Void TDbrSbac::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID compID
         UInt& currentGolombRiceStatistic        = m_golombRiceAdaptationStatistics[tu.getGolombRiceStatisticsIndex(compID)];
 
 
-  // Get the scan map for this transform block
+  // Get the scan iterator for this transform block
   TUEntropyCodingParameters codingParameters;
   getTUEntropyCodingParameters(codingParameters, tu, compID);
+
 
   // Tracks which 4x4 coefficient groups contain significant coefficients
   UInt isGroupSignificant[MLS_GRP_NUM];
   memset(isGroupSignificant, 0, sizeof(UInt) * MLS_GRP_NUM);
 
   // The index of the last significant coefficient in scan order
-  Int lastSigCoeffScanOrder = 0;
+  Int lscScanOrderIndex = 0;
   
-  // The index of the last significant coefficient in block order
-  Int lastSigCoeffBlockOrder;
+  // The index of the last significant coefficient in raster order
+  Int lscRasterOrderIndex;
 
-  // Scan through all coefficients to set up lastSigCoeffScanOrder,
-  //   lastSigCoeffBlockOrder, and the isGroupSignificant array
-  for (UInt numSigCoeffs = 0, numCoeffs = 0; numSigCoeffs < totalNumSigCoeffs; numCoeffs++) {
-    lastSigCoeffScanOrder  = numCoeffs;
-    lastSigCoeffBlockOrder = codingParameters.scan[lastSigCoeffScanOrder];
+  // Scan through all coefficients to set up lscScanOrderIndex,
+  //   lscRasterOrderIndex, and the isGroupSignificant array
+  for (UInt coeffScanOrderIndex = 0, sigCoeffNum = 0; sigCoeffNum < totalNumSigCoeffs; coeffScanOrderIndex++) {
+    const UInt coeffRasterOrderIndex = codingParameters.scan[coeffScanOrderIndex];
 
-    if (pcCoef[lastSigCoeffBlockOrder] != 0) {
-      UInt posY = lastSigCoeffBlockOrder >> tuWidthLog2;
-      UInt posX = lastSigCoeffBlockOrder - (posY << tuWidthLog2);
-      UInt groupIndex =
+    if (pcCoef[coeffRasterOrderIndex] != 0) {
+      UInt posY = coeffRasterOrderIndex >> tuWidthLog2;
+      UInt posX = coeffRasterOrderIndex - (posY << tuWidthLog2);
+      UInt cgIndex =
         codingParameters.widthInGroups * (posY >> MLS_CG_LOG2_HEIGHT) +
                                          (posX >> MLS_CG_LOG2_WIDTH);
 
-      isGroupSignificant[groupIndex] = 1;
-      numSigCoeffs++;
+      isGroupSignificant[cgIndex] = 1;
+      sigCoeffNum++;
+      lscScanOrderIndex   = coeffScanOrderIndex;
+      lscRasterOrderIndex = coeffRasterOrderIndex;
     }
   }
 
 
   // Code position of last coefficient
   {
-    Int posLastY = lastSigCoeffBlockOrder >> tuWidthLog2;
-    Int posLastX = lastSigCoeffBlockOrder - (posLastY << tuWidthLog2);
+    Int posLastY = lscRasterOrderIndex >> tuWidthLog2;
+    Int posLastX = lscRasterOrderIndex - (posLastY << tuWidthLog2);
     codeLastSignificantXY(
       posLastX,
       posLastY,
@@ -502,17 +504,17 @@ Void TDbrSbac::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID compID
     m_cCUSigSCModel.get(0, 0) + getSignificanceMapContextOffset(compID);
 
 
-  // The index of the current coefficient in scan order
-  Int curCoeffScanOrder = lastSigCoeffScanOrder;
-
   // The index of the group containing the last significant coefficient
-  const Int lastSigCGIndex = lastSigCoeffScanOrder >> MLS_CG_SIZE;
+  const Int lscgScanOrderIndex = lscScanOrderIndex >> MLS_CG_SIZE;
+
+  // The index of the current coefficient in scan order
+  Int coeffScanOrderIndex = lscScanOrderIndex;
 
   // TODO
   UInt c1 = 1;
 
   // Iterate over the 4x4 coefficient groups
-  for (Int cgIndex = lastSigCGIndex; cgIndex >= 0; cgIndex--) {
+  for (Int cgScanOrderIndex = lscgScanOrderIndex; cgScanOrderIndex >= 0; cgScanOrderIndex--) {
     UInt coeffSigns       = 0;
     Int  numSigCoeffsInCG = 0;
     Int  firstSigPosInCG  = 1 << MLS_CG_SIZE;
@@ -525,29 +527,31 @@ Void TDbrSbac::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID compID
     Bool updateGolombRiceStatistics = bUseGolombRiceParameterAdaptation; // leave the statistics at 0 when not using the adaptation system
 
     // Handle the last significant coefficient
-    if (curCoeffScanOrder == lastSigCoeffScanOrder) {
-      absCoeff[0]      = static_cast<Int>(abs(pcCoef[lastSigCoeffBlockOrder]));
-      coeffSigns       = (pcCoef[lastSigCoeffBlockOrder] < 0);
-      firstSigPosInCG  = curCoeffScanOrder;
-      lastSigPosInCG   = curCoeffScanOrder;
+    if (coeffScanOrderIndex == lscScanOrderIndex) {
+      absCoeff[0]      = static_cast<Int>(abs(pcCoef[lscRasterOrderIndex]));
+      coeffSigns       = (pcCoef[lscRasterOrderIndex] < 0);
+      firstSigPosInCG  = coeffScanOrderIndex;
+      lastSigPosInCG   = coeffScanOrderIndex;
       numSigCoeffsInCG = 1;
-      curCoeffScanOrder--;
+      coeffScanOrderIndex--;
     }
 
     // Calculate the (x, y) location of the current coefficient group
-    const Int cgBlockPos  = codingParameters.scanCG[cgIndex];
-    const Int cgBlockPosY = cgBlockPos / codingParameters.widthInGroups;
-    const Int cgBlockPosX = cgBlockPos - (cgBlockPosY * codingParameters.widthInGroups);
+    const Int cgRasterOrderIndex  = codingParameters.scanCG[cgScanOrderIndex];
+    const Int cgYPos = cgRasterOrderIndex / codingParameters.widthInGroups;
+    const Int cgXPos = cgRasterOrderIndex - (cgYPos * codingParameters.widthInGroups);
 
-    // Signal whether this block contains significant coefficients
-    if (cgIndex == lastSigCGIndex || cgIndex == 0) {
-      isGroupSignificant[cgBlockPos] = 1;
+    // Signal whether this coefficient group contains significant coefficients
+    // Note: First and last coefficient groups are assumed to have significant
+    //       coefficients
+    if (cgScanOrderIndex == lscgScanOrderIndex || cgScanOrderIndex == 0) {
+      isGroupSignificant[cgRasterOrderIndex] = 1;
     } else {
-      UInt isCGSig = (isGroupSignificant[cgBlockPos] != 0) ? 1 : 0;
+      UInt isCGSig = (isGroupSignificant[cgRasterOrderIndex] != 0) ? 1 : 0;
       UInt sigCGContext = TComTrQuant::getSigCoeffGroupCtxInc(
         isGroupSignificant,
-        cgBlockPosX,
-        cgBlockPosY,
+        cgXPos,
+        cgYPos,
         codingParameters.widthInGroups,
         codingParameters.heightInGroups
       );
@@ -557,25 +561,25 @@ Void TDbrSbac::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID compID
     // Signal whether each coefficient in the 4x4 group is significant
     //   (significant_coeff_flag)
     {
-      Int lastCoeffInGroup = cgIndex << MLS_CG_SIZE;
-      if (isGroupSignificant[cgBlockPos]) {
+      Int firstCoeffInGroupScanOrderIndex = cgScanOrderIndex << MLS_CG_SIZE;
+      if (isGroupSignificant[cgRasterOrderIndex]) {
         const Int sigCoeffContext = TComTrQuant::calcPatternSigCtx(
           isGroupSignificant,
-          cgBlockPosX,
-          cgBlockPosY,
+          cgXPos,
+          cgYPos,
           codingParameters.widthInGroups,
           codingParameters.heightInGroups
         );
 
         // Loop through all coefficients in the 4x4 block
-        for ( ; curCoeffScanOrder >= lastCoeffInGroup; curCoeffScanOrder--) {
-          UInt coeffBlockPos = codingParameters.scan[curCoeffScanOrder];
+        for ( ; coeffScanOrderIndex >= firstCoeffInGroupScanOrderIndex; coeffScanOrderIndex--) {
+          UInt coeffBlockPos = codingParameters.scan[coeffScanOrderIndex];
           UInt isCoeffSig = (pcCoef[coeffBlockPos] != 0);
-          if (curCoeffScanOrder > lastCoeffInGroup || cgIndex == 0 || numSigCoeffsInCG) {
+          if (coeffScanOrderIndex > firstCoeffInGroupScanOrderIndex || cgScanOrderIndex == 0 || numSigCoeffsInCG) {
             UInt uiCtxSig = TComTrQuant::getSigCtxInc(
               sigCoeffContext,
               codingParameters,
-              curCoeffScanOrder,
+              coeffScanOrderIndex,
               tuWidthLog2,
               tuHeightLog2,
               channelType
@@ -587,13 +591,13 @@ Void TDbrSbac::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID compID
             numSigCoeffsInCG++;
             coeffSigns = (coeffSigns << 1) + (pcCoef[coeffBlockPos] < 0 ? 1 : 0);
             if (lastSigPosInCG == -1) {
-              lastSigPosInCG = curCoeffScanOrder;
+              lastSigPosInCG = coeffScanOrderIndex;
             }
-            firstSigPosInCG = curCoeffScanOrder;
+            firstSigPosInCG = coeffScanOrderIndex;
           }
         }
       } else {
-        curCoeffScanOrder = lastCoeffInGroup - 1;
+        coeffScanOrderIndex = firstCoeffInGroupScanOrderIndex - 1;
       }
     }
 
@@ -606,7 +610,7 @@ Void TDbrSbac::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID compID
     // Can only employ sign hiding if enough coefficients are in the block
     const Bool canHideSign = (lastSigPosInCG - firstSigPosInCG >= SBH_THRESHOLD);
 
-    const UInt contextSet = getContextSetIndex(compID, cgIndex, c1 == 0);
+    const UInt contextSet = getContextSetIndex(compID, cgScanOrderIndex, c1 == 0);
     c1 = 1;
 
     ContextModel* baseContextModel = m_cCUOneSCModel.get(0, 0) + (NUM_ONE_FLAG_CTX_PER_SET * contextSet);
