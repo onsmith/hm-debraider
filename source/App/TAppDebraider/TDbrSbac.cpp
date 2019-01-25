@@ -481,6 +481,10 @@ Void TDbrSbac::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID compID
     }
   }
 
+  // First context group, containing DC coefficient, is always assumed to be
+  //   significant
+  isGroupSignificant[0] = 1;
+
 
   // Code position of last coefficient
   {
@@ -510,44 +514,46 @@ Void TDbrSbac::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID compID
   // The index of the current coefficient in scan order
   Int coeffScanOrderIndex = lscScanOrderIndex;
 
-  // TODO
-  UInt c1 = 1;
+  // Context state variable for signaling whether coefficient levels are greater
+  //   than 1
+  UInt gt1Context = 1;
 
   // Iterate over the 4x4 coefficient groups
   for (Int cgScanOrderIndex = lscgScanOrderIndex; cgScanOrderIndex >= 0; cgScanOrderIndex--) {
-    UInt coeffSigns       = 0;
-    Int  numSigCoeffsInCG = 0;
-    Int  firstSigPosInCG  = 1 << MLS_CG_SIZE;
-    Int  lastSigPosInCG   = -1;
+    UInt coeffSigns = 0;
 
-    Int  absCoeff[1 << MLS_CG_SIZE];
+    // Number of encountered significant coefficients in this coefficient group
+    Int numSCsInCG = 0;
 
-    Bool isEscapeDataPresentInGroup = false;
-    UInt golombRiceParam            = currentGolombRiceStatistic / RExt__GOLOMB_RICE_INCREMENT_DIVISOR;
-    Bool updateGolombRiceStatistics = bUseGolombRiceParameterAdaptation; // leave the statistics at 0 when not using the adaptation system
+    // First significant coeffient index in the coefficient group
+    Int firstSCInCGScanOrderIndex = 1 << MLS_CG_SIZE;
 
-    // Handle the last significant coefficient
+    // Last significant coefficient index in the coefficient group
+    Int lastSCInCGScanOrderIndex = -1;
+
+    // Array storing the absolute value coefficients
+    Int  absCoeffs[1 << MLS_CG_SIZE];
+
+    // Implicitly signal the last significant coefficient
     if (coeffScanOrderIndex == lscScanOrderIndex) {
-      absCoeff[0]      = static_cast<Int>(abs(pcCoef[lscRasterOrderIndex]));
-      coeffSigns       = (pcCoef[lscRasterOrderIndex] < 0);
-      firstSigPosInCG  = coeffScanOrderIndex;
-      lastSigPosInCG   = coeffScanOrderIndex;
-      numSigCoeffsInCG = 1;
+      absCoeffs[0] = static_cast<Int>(abs(pcCoef[lscRasterOrderIndex]));
+      coeffSigns = (pcCoef[lscRasterOrderIndex] < 0);
+      firstSCInCGScanOrderIndex = coeffScanOrderIndex;
+      lastSCInCGScanOrderIndex = coeffScanOrderIndex;
+      numSCsInCG = 1;
       coeffScanOrderIndex--;
     }
 
     // Calculate the (x, y) location of the current coefficient group
-    const Int cgRasterOrderIndex  = codingParameters.scanCG[cgScanOrderIndex];
+    const Int cgRasterOrderIndex = codingParameters.scanCG[cgScanOrderIndex];
     const Int cgYPos = cgRasterOrderIndex / codingParameters.widthInGroups;
     const Int cgXPos = cgRasterOrderIndex - (cgYPos * codingParameters.widthInGroups);
 
     // Signal whether this coefficient group contains significant coefficients
     // Note: First and last coefficient groups are assumed to have significant
-    //       coefficients
-    if (cgScanOrderIndex == lscgScanOrderIndex || cgScanOrderIndex == 0) {
-      isGroupSignificant[cgRasterOrderIndex] = 1;
-    } else {
-      UInt isCGSig = (isGroupSignificant[cgRasterOrderIndex] != 0) ? 1 : 0;
+    //       coefficients and do not need to be signalled
+    if (cgScanOrderIndex != lscgScanOrderIndex && cgScanOrderIndex != 0) {
+      UInt isCGSig = (isGroupSignificant[cgRasterOrderIndex] ? 1 : 0);
       UInt sigCGContext = TComTrQuant::getSigCoeffGroupCtxInc(
         isGroupSignificant,
         cgXPos,
@@ -561,7 +567,7 @@ Void TDbrSbac::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID compID
     // Signal whether each coefficient in the 4x4 group is significant
     //   (significant_coeff_flag)
     {
-      Int firstCoeffInGroupScanOrderIndex = cgScanOrderIndex << MLS_CG_SIZE;
+      Int firstCoeffInCGScanOrderIndex = cgScanOrderIndex << MLS_CG_SIZE;
       if (isGroupSignificant[cgRasterOrderIndex]) {
         const Int sigCoeffContext = TComTrQuant::calcPatternSigCtx(
           isGroupSignificant,
@@ -572,10 +578,15 @@ Void TDbrSbac::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID compID
         );
 
         // Loop through all coefficients in the 4x4 block
-        for ( ; coeffScanOrderIndex >= firstCoeffInGroupScanOrderIndex; coeffScanOrderIndex--) {
-          UInt coeffBlockPos = codingParameters.scan[coeffScanOrderIndex];
-          UInt isCoeffSig = (pcCoef[coeffBlockPos] != 0);
-          if (coeffScanOrderIndex > firstCoeffInGroupScanOrderIndex || cgScanOrderIndex == 0 || numSigCoeffsInCG) {
+        for ( ; coeffScanOrderIndex >= firstCoeffInCGScanOrderIndex; coeffScanOrderIndex--) {
+          UInt coeffRasterOrderIndex = codingParameters.scan[coeffScanOrderIndex];
+          UInt isCoeffSigFlag = (pcCoef[coeffRasterOrderIndex] ? 1 : 0);
+
+          // Encode significant coefficient flag
+          // Note: Don't need to signal significance for the last coefficient in
+          //   a coefficient block if no significant coefficients have been seen
+          //   yet but we know one exists (except for DC coefficient)
+          if (coeffScanOrderIndex != firstCoeffInCGScanOrderIndex || cgScanOrderIndex == 0 || numSCsInCG != 0) {
             UInt uiCtxSig = TComTrQuant::getSigCtxInc(
               sigCoeffContext,
               codingParameters,
@@ -584,99 +595,133 @@ Void TDbrSbac::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID compID
               tuHeightLog2,
               channelType
             );
-            m_pcBinIf->encodeBin(isCoeffSig, baseContext[uiCtxSig]);
+            m_pcBinIf->encodeBin(isCoeffSigFlag, baseContext[uiCtxSig]);
           }
-          if (isCoeffSig) {
-            absCoeff[numSigCoeffsInCG] = static_cast<Int>(abs(pcCoef[coeffBlockPos]));
-            numSigCoeffsInCG++;
-            coeffSigns = (coeffSigns << 1) + (pcCoef[coeffBlockPos] < 0 ? 1 : 0);
-            if (lastSigPosInCG == -1) {
-              lastSigPosInCG = coeffScanOrderIndex;
+
+          // Store significant coefficients to encode during later scans
+          if (isCoeffSigFlag) {
+            absCoeffs[numSCsInCG] =
+              static_cast<Int>(abs(pcCoef[coeffRasterOrderIndex]));
+            numSCsInCG++;
+            coeffSigns = (coeffSigns << 1) + (pcCoef[coeffRasterOrderIndex] < 0 ? 1 : 0);
+            if (lastSCInCGScanOrderIndex == -1) {
+              lastSCInCGScanOrderIndex = coeffScanOrderIndex;
             }
-            firstSigPosInCG = coeffScanOrderIndex;
+            firstSCInCGScanOrderIndex = coeffScanOrderIndex;
           }
         }
       } else {
-        coeffScanOrderIndex = firstCoeffInGroupScanOrderIndex - 1;
+        coeffScanOrderIndex = firstCoeffInCGScanOrderIndex - 1;
       }
     }
 
     // Nothing left to signal for this group if there there are no significant
     //   coefficients in it
-    if (numSigCoeffsInCG == 0) {
+    if (numSCsInCG == 0) {
       continue;
     }
 
     // Can only employ sign hiding if enough coefficients are in the block
-    const Bool canHideSign = (lastSigPosInCG - firstSigPosInCG >= SBH_THRESHOLD);
+    const Bool canHideSign =
+      (lastSCInCGScanOrderIndex - firstSCInCGScanOrderIndex >= SBH_THRESHOLD);
 
-    const UInt contextSet = getContextSetIndex(compID, cgScanOrderIndex, c1 == 0);
-    c1 = 1;
-
+    // Setup CABAC contexts
+    const UInt contextSet = getContextSetIndex(compID, cgScanOrderIndex, gt1Context == 0);
     ContextModel* baseContextModel = m_cCUOneSCModel.get(0, 0) + (NUM_ONE_FLAG_CTX_PER_SET * contextSet);
+    gt1Context = 1;
 
-    // Signal whether each significant coefficient is greater than 1
-    Int numC1Flag = min(numSigCoeffsInCG, C1FLAG_NUMBER);
-    Int firstC2FlagIdx = -1;
-    for (Int i = 0; i < numC1Flag; i++) {
-      const UInt symbol = (absCoeff[i] > 1) ? 1 : 0;
-      m_pcBinIf->encodeBin(symbol, baseContextModel[c1]);
-      if (symbol) {
-        c1 = 0;
+    // Set Golomb-Rice parameter
+    UInt golombRiceParam            = currentGolombRiceStatistic / RExt__GOLOMB_RICE_INCREMENT_DIVISOR;
+    Bool updateGolombRiceStatistics = bUseGolombRiceParameterAdaptation; // leave the statistics at 0 when not using the adaptation system
 
-        if (firstC2FlagIdx == -1) {
-          firstC2FlagIdx = i;
-        } else { // if a greater-than-one has been encountered already this group
-          isEscapeDataPresentInGroup = true;
+    // Number of coded greater-than-1 flags
+    const Int numGT1FlagsInCG = min(numSCsInCG, C1FLAG_NUMBER);
+
+    // True if there are > 8 significant coefficients in the group
+    const Bool hasMoreThan8SigCoeffs = (numSCsInCG > C1FLAG_NUMBER);
+    
+    // The index of the first coefficient with a level greater than 1
+    Int firstGT1CoeffIndex = -1;
+
+    // Signal whether the first eight significant coefficients in the 4x4 group
+    //   are greater than 1 (coeff_abs_level_greater1_flag)
+    Bool hasMoreThan1GT1Coeff = false;
+    for (Int i = 0; i < numGT1FlagsInCG; i++) {
+      const Bool isCoeffGT1 = (absCoeffs[i] > 1);
+      m_pcBinIf->encodeBin(isCoeffGT1 ? 1 : 0, baseContextModel[gt1Context]);
+      if (isCoeffGT1) {
+        gt1Context = 0;
+
+        if (firstGT1CoeffIndex == -1) {
+          firstGT1CoeffIndex = i;
+        } else {
+          hasMoreThan1GT1Coeff = true;
         }
-      } else if (0 < c1 && c1 < 3) {
-        c1++;
+      } else if (0 < gt1Context && gt1Context < 3) {
+        gt1Context++;
       }
     }
 
-    if (c1 == 0) {
+    // Signal whether the first greater-than-1 coefficient in the 4x4 group is
+    //   greater than 2 (coeff_abs_level_greater2_flag)
+    Bool hasMoreThan0GT2Coeff = false;
+    if (gt1Context == 0 && firstGT1CoeffIndex != -1) {
       baseContextModel = m_cCUAbsSCModel.get(0, 0) + (NUM_ABS_FLAG_CTX_PER_SET * contextSet);
-      if (firstC2FlagIdx != -1) {
-        UInt symbol = absCoeff[firstC2FlagIdx] > 2;
-        m_pcBinIf->encodeBin(symbol, baseContextModel[0]);
-        if (symbol != 0) {
-          isEscapeDataPresentInGroup = true;
-        }
+      const Bool isCoeffGT2 = (absCoeffs[firstGT1CoeffIndex] > 2);
+      m_pcBinIf->encodeBin(isCoeffGT2 ? 1 : 0, baseContextModel[0]);
+      if (isCoeffGT2) {
+        hasMoreThan0GT2Coeff = true;
       }
     }
 
-    isEscapeDataPresentInGroup = isEscapeDataPresentInGroup || (numSigCoeffsInCG > C1FLAG_NUMBER);
+    // True if this group contains remaining absolute level data
+    const Bool hasRemainingAbsoluteLevels =
+      (hasMoreThan8SigCoeffs || hasMoreThan1GT1Coeff || hasMoreThan0GT2Coeff);
 
-    if (isEscapeDataPresentInGroup && alignCABACBeforeBypass) {
+    // Align bins before coding equiprobable bits
+    if (hasRemainingAbsoluteLevels && alignCABACBeforeBypass) {
       m_pcBinIf->align();
     }
 
+    // Signal sign bits (coeff_sign_flag)
     if (isSignHidingEnabled && canHideSign) {
-      m_pcBinIf->encodeBinsEP(coeffSigns >> 1, numSigCoeffsInCG - 1);
+      m_pcBinIf->encodeBinsEP(coeffSigns >> 1, numSCsInCG - 1);
     } else {
-      m_pcBinIf->encodeBinsEP(coeffSigns, numSigCoeffsInCG);
+      m_pcBinIf->encodeBinsEP(coeffSigns, numSCsInCG);
     }
 
-    Int iFirstCoeff2 = 1;
-    if (isEscapeDataPresentInGroup) {
-      for (Int idx = 0; idx < numSigCoeffsInCG; idx++) {
-        UInt baseLevel  = (idx < C1FLAG_NUMBER)? (2 + iFirstCoeff2 ) : 1;
+    // Signal remaining coefficient level data (coeff_abs_level_remaining)
+    Int gt2CoeffAddin = 1;
+    if (hasRemainingAbsoluteLevels) {
+      for (Int sigCoeffIndex = 0; sigCoeffIndex < numSCsInCG; sigCoeffIndex++) {
+        UInt baseLevel = (sigCoeffIndex < C1FLAG_NUMBER) ? (2 + gt2CoeffAddin) : 1;
 
-        if (absCoeff[ idx ] >= baseLevel) {
-          const UInt escapeCodeValue = absCoeff[idx] - baseLevel;
+        if (absCoeffs[sigCoeffIndex] >= baseLevel) {
+          const UInt escapeCodeValue = absCoeffs[sigCoeffIndex] - baseLevel;
 
-          xWriteCoefRemainExGolomb(escapeCodeValue, golombRiceParam, isPrecisionExtended, maxLog2TrDynamicRange);
+          // Write Golomb code
+          xWriteCoefRemainExGolomb(
+            escapeCodeValue,
+            golombRiceParam,
+            isPrecisionExtended,
+            maxLog2TrDynamicRange
+          );
 
-          if (absCoeff[idx] > (3 << golombRiceParam)) {
-            golombRiceParam = bUseGolombRiceParameterAdaptation ? golombRiceParam + 1 : std::min<UInt>(golombRiceParam + 1, 4);
+          // Adjust Golomb-Rice parameter
+          if (absCoeffs[sigCoeffIndex] > (3 << golombRiceParam)) {
+            golombRiceParam =
+              bUseGolombRiceParameterAdaptation ?
+              golombRiceParam + 1 :
+              std::min<UInt>(golombRiceParam + 1, 4);
           }
 
+          // Update Golumb-Rice parameter statistics
           if (updateGolombRiceStatistics) {
             const UInt initialGolombRiceParameter = currentGolombRiceStatistic / RExt__GOLOMB_RICE_INCREMENT_DIVISOR;
 
-            if (escapeCodeValue >= 3 << initialGolombRiceParameter) {
+            if (escapeCodeValue >= (3 << initialGolombRiceParameter)) {
               currentGolombRiceStatistic++;
-            } else if ((escapeCodeValue * 2) < (1 << initialGolombRiceParameter) && currentGolombRiceStatistic > 0) {
+            } else if (2*escapeCodeValue < (1 << initialGolombRiceParameter) && currentGolombRiceStatistic > 0) {
               currentGolombRiceStatistic--;
             }
 
@@ -684,14 +729,11 @@ Void TDbrSbac::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID compID
           }
         }
 
-        if (absCoeff[ idx ] >= 2) {
-          iFirstCoeff2 = 0;
+        // Only adjust baseLevel one time, for a single gt1 coefficient
+        if (absCoeffs[sigCoeffIndex] >= 2) {
+          gt2CoeffAddin = 0;
         }
       }
     }
   }
-
-#if ENVIRONMENT_VARIABLE_DEBUG_AND_TEST
-  printSBACCoeffData(posLastX, posLastY, uiWidth, uiHeight, compID, uiAbsPartIdx, codingParameters.scanType, pcCoef, pcCU->getSlice()->getFinalized());
-#endif
 }
