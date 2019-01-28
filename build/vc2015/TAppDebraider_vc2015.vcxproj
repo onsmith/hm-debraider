@@ -199,6 +199,7 @@
     <ClCompile Include="..\..\source\App\TAppDebraider\TAppDbrTop.cpp" />
     <ClCompile Include="..\..\source\App\TAppDebraider\TDbrBinCABAC.cpp" />
     <ClCompile Include="..\..\source\App\TAppDebraider\TDbrCavlc.cpp" />
+    <ClCompile Include="..\..\source\App\TAppDebraider\TDbrCoeffEnc.cpp" />
     <ClCompile Include="..\..\source\App\TAppDebraider\TDbrSbac.cpp" />
     <ClCompile Include="..\..\source\App\TAppDebraider\TDbrTop.cpp" />
     <ClCompile Include="..\..\source\App\TAppDebraider\TDbrXmlWriter.cpp" />
@@ -209,6 +210,7 @@
     <ClInclude Include="..\..\source\App\TAppDebraider\TAppDbrTop.h" />
     <ClInclude Include="..\..\source\App\TAppDebraider\TDbrBinCABAC.h" />
     <ClInclude Include="..\..\source\App\TAppDebraider\TDbrCavlc.h" />
+    <ClInclude Include="..\..\source\App\TAppDebraider\TDbrCoeffEnc.h" />
     <ClInclude Include="..\..\source\App\TAppDebraider\TDbrSbac.h" />
     <ClInclude Include="..\..\source\App\TAppDebraider\TDbrTop.h" />
     <ClInclude Include="..\..\source\App\TAppDebraider\TDbrXmlWriter.h" />

@@ -38,6 +38,9 @@
     <ClCompile Include="..\..\source\App\TAppDebraider\TDbrXmlWriter.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\source\App\TAppDebraider\TDbrCoeffEnc.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\source\App\TAppDebraider\TAppDbrCfg.h">
@@ -62,6 +65,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\source\App\TAppDebraider\TDbrXmlWriter.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\source\App\TAppDebraider\TDbrCoeffEnc.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
