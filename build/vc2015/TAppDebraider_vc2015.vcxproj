@@ -198,12 +198,15 @@
     <ClCompile Include="..\..\source\App\TAppDebraider\TAppDbrCfg.cpp" />
     <ClCompile Include="..\..\source\App\TAppDebraider\TAppDbrTop.cpp" />
     <ClCompile Include="..\..\source\App\TAppDebraider\TDbrBinCABAC.cpp" />
+    <ClCompile Include="..\..\source\App\TAppDebraider\TDbrCabacContexts.cpp" />
     <ClCompile Include="..\..\source\App\TAppDebraider\TDbrCavlc.cpp" />
     <ClCompile Include="..\..\source\App\TAppDebraider\TDbrCoeffEnc.cpp" />
+    <ClCompile Include="..\..\source\App\TAppDebraider\TDbrLayer.cpp" />
     <ClCompile Include="..\..\source\App\TAppDebraider\TDbrSbac.cpp" />
     <ClCompile Include="..\..\source\App\TAppDebraider\TDbrTop.cpp" />
     <ClCompile Include="..\..\source\App\TAppDebraider\TDbrXmlWriter.cpp" />
     <ClCompile Include="..\..\source\App\TAppDebraider\TTraPictureBuffer.cpp" />
+    <ClCompile Include="..\..\source\App\TAppDebraider\XmlBinEncoder.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\source\App\TAppDebraider\TAppDbrCfg.h" />
@@ -211,10 +214,13 @@
     <ClInclude Include="..\..\source\App\TAppDebraider\TDbrBinCABAC.h" />
     <ClInclude Include="..\..\source\App\TAppDebraider\TDbrCavlc.h" />
     <ClInclude Include="..\..\source\App\TAppDebraider\TDbrCoeffEnc.h" />
+    <ClInclude Include="..\..\source\App\TAppDebraider\TDbrCabacContexts.h" />
+    <ClInclude Include="..\..\source\App\TAppDebraider\TDbrLayer.h" />
     <ClInclude Include="..\..\source\App\TAppDebraider\TDbrSbac.h" />
     <ClInclude Include="..\..\source\App\TAppDebraider\TDbrTop.h" />
     <ClInclude Include="..\..\source\App\TAppDebraider\TDbrXmlWriter.h" />
     <ClInclude Include="..\..\source\App\TAppDebraider\TTraPictureBuffer.h" />
+    <ClInclude Include="..\..\source\App\TAppDebraider\XmlBinEncoder.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

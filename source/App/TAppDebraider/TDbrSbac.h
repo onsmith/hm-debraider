@@ -43,6 +43,7 @@
 
 #include "TDbrBinCABAC.h"
 #include "TDbrXmlWriter.h"
+#include "TDbrCoeffEnc.h"
 
 #include "TLibDecoder/TDecSbac.h"
 
@@ -60,6 +61,9 @@ protected:
   //   transparently outputting all symbols read to the current debraided
   //   bitstream
   TDbrBinCABAC* cabacReader;
+
+  // Coefficient encoder
+  TDbrCoeffEnc coefficientEncoder;
 
 
 public:

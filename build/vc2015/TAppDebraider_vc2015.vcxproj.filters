@@ -41,6 +41,15 @@
     <ClCompile Include="..\..\source\App\TAppDebraider\TDbrCoeffEnc.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\source\App\TAppDebraider\TDbrCabacContexts.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\source\App\TAppDebraider\TDbrLayer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\source\App\TAppDebraider\XmlBinEncoder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\source\App\TAppDebraider\TAppDbrCfg.h">
@@ -68,6 +77,15 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\source\App\TAppDebraider\TDbrCoeffEnc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\source\App\TAppDebraider\TDbrCabacContexts.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\source\App\TAppDebraider\TDbrLayer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\source\App\TAppDebraider\XmlBinEncoder.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

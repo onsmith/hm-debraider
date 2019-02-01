@@ -33,80 +33,42 @@
 
 
 /**
- *  \file     TDbrCoeffEnc.h
+ *  \file     TDbrLayer.h
  *  \project  TAppDebraider
- *  \brief    Coefficient encoder
+ *  \brief    Cabac layer
  */
 
 
 #pragma once
 
-#include "TLibCommon/TComTu.h"
 #include "TDbrCabacContexts.h"
-#include "TDbrXmlWriter.h"
-#include "TDbrLayer.h"
-#include "XmlBinEncoder.h"
-
-#include <vector>
-using std::vector;
+#include "TLibCommon/TComBitStream.h"
+#include "TLibEncoder/TEncBinCoderCABACCounter.h"
 
 
 //! \ingroup TAppDebraider
 //! \{
 
 
-class TDbrCoeffEnc {
+class TDbrLayer {
 protected:
-  // Layers
-  vector<TDbrLayer> layers;
+  // CABAC counter
+  TEncBinCABACCounter cabacEncoder;
 
-  // Xml bin writer
-  XmlBinEncoder xmlBinEncoder;
+  // Fake output bitstream
+  TComOutputBitstream bitstream;
 
-  // Bin writer
-  TEncBinIf* m_pcBinIf;
-
-  // Cabac context
-  TDbrCabacContexts context;
+  // Contexts
+  TDbrCabacContexts contexts;
 
 
 public:
-  // Constructors
-  TDbrCoeffEnc();
-  TDbrCoeffEnc(size_t numLayers);
+  // Constructor
+  TDbrLayer();
 
-  // Gets the number of layers in the coder
-  size_t numLayers() const;
-
-  // Adds a layer to the encoder
-  Void addLayer();
-
-  // Codes the given coefficients for a given transform block
-  Void codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID compID);
-
-  // Sets the bin writer
-  Void setXmlWriter(TDbrXmlWriter* writer);
-
-
-protected:
-  // Codes the (x, y) position of the last significant coefficient within a
-  //   transform block
-  Void xCodeLastSignificantXY(UInt xCoord, UInt yCoord, Int width, Int height, ComponentID component, UInt scanIndex);
-
-  // Codes the remaining level for a coefficient
-  Void xWriteCoefRemainExGolomb(UInt symbol, UInt &rParam, const Bool useLimitedPrefixLength, const Int maxLog2TrDynamicRange);
-
-  // Codes the transform skip flag for the given transform block
-  Void xCodeTransformSkipFlag(TComTU &tu, ComponentID component);
-
-  // Codes the explicit RDPCM mode data
-  Void xCodeExplicitRdpcmMode(TComTU &tu, const ComponentID component);
-
-  // Codes the significance flag a coefficient group
-  Void xCodeSigGroupFlag(UInt flag, UInt contextOffset, ChannelType channelType);
-
-  // Codes the significance flag for a coefficient
-  Void xCodeSigCoeffFlag(UInt isCoeffSig, UInt contextOffset);
+  // Bin encoders
+  Void encodeBin(UInt value, ContextModel& context);
+  Void encodeBinEP(UInt value);
 };
 
 

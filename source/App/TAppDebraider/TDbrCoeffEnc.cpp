@@ -6,32 +6,15 @@
 
 
 
-TDbrLayer::TDbrLayer() :
-  numContextModels(0),
-  m_cCUSigCoeffGroupSCModel (1, 2,                      NUM_SIG_CG_FLAG_CTX,         contextModels + numContextModels, numContextModels),
-  m_cCUSigSCModel           (1, 1,                      NUM_SIG_FLAG_CTX,            contextModels + numContextModels, numContextModels),
-  m_cCuCtxLastX             (1, NUM_CTX_LAST_FLAG_SETS, NUM_CTX_LAST_FLAG_XY,        contextModels + numContextModels, numContextModels),
-  m_cCuCtxLastY             (1, NUM_CTX_LAST_FLAG_SETS, NUM_CTX_LAST_FLAG_XY,        contextModels + numContextModels, numContextModels),
-  m_cCUOneSCModel           (1, 1,                      NUM_ONE_FLAG_CTX,            contextModels + numContextModels, numContextModels),
-  m_cCUAbsSCModel           (1, 1,                      NUM_ABS_FLAG_CTX,            contextModels + numContextModels, numContextModels),
-  m_cTransformSkipSCModel   (1, MAX_NUM_CHANNEL_TYPE,   NUM_TRANSFORMSKIP_FLAG_CTX,  contextModels + numContextModels, numContextModels),
-  m_explicitRdpcmFlagSCModel(1, MAX_NUM_CHANNEL_TYPE,   NUM_EXPLICIT_RDPCM_FLAG_CTX, contextModels + numContextModels, numContextModels),
-  m_explicitRdpcmDirSCModel (1, MAX_NUM_CHANNEL_TYPE,   NUM_EXPLICIT_RDPCM_DIR_CTX,  contextModels + numContextModels, numContextModels) {
-  cabacEncoder.init(&bitstream);
-}
-
-
-
-Void TDbrLayer::encodeBin(UInt value, ContextModel& context) {
-  cabacEncoder.encodeBin(value, context);
-}
-
-
-
 TDbrCoeffEnc::TDbrCoeffEnc(size_t numLayers) :
   layers(numLayers) {
+  m_pcBinIf = &xmlBinEncoder;
 }
 
+
+TDbrCoeffEnc::TDbrCoeffEnc() {
+  m_pcBinIf = &xmlBinEncoder;
+}
 
 
 size_t TDbrCoeffEnc::numLayers() const {
@@ -39,9 +22,13 @@ size_t TDbrCoeffEnc::numLayers() const {
 }
 
 
-
 Void TDbrCoeffEnc::addLayer() {
   layers.push_back(TDbrLayer());
+}
+
+
+Void TDbrCoeffEnc::setXmlWriter(TDbrXmlWriter* writer) {
+  xmlBinEncoder.setXmlWriter(writer);
 }
 
 
@@ -153,7 +140,7 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID co
   if (cu.getCUTransquantBypass(tuPartIndex) || isImplicitlyRDPCMCoded(tu, compID)) {
     isSignHidingEnabled = false;
     if (!cu.isIntra(tuPartIndex) && cu.isRDPCMEnabled(tuPartIndex)) {
-      codeExplicitRdpcmMode(tu, compID);
+      xCodeExplicitRdpcmMode(tu, compID);
     }
   }
 
@@ -163,7 +150,7 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID co
     xCodeTransformSkipFlag(tu, compID);
     if (cu.getTransformSkip(tuPartIndex, compID) && !cu.isIntra(tuPartIndex) && cu.isRDPCMEnabled(tuPartIndex)) {
       //  This TU has coefficients and is transform skipped. Check whether is inter coded and if yes encode the explicit RDPCM mode
-      codeExplicitRdpcmMode(tu, compID);
+      xCodeExplicitRdpcmMode(tu, compID);
 
       //  Sign data hiding is force-disabled for horizontal and vertical explicit RDPCM modes
       if (cu.getExplicitRdpcmMode(compID, tuPartIndex) != RDPCM_OFF) {
@@ -173,9 +160,9 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID co
   }
 
 
-  // TODO: Define these variables
-  const Bool  bUseGolombRiceParameterAdaptation = sps.getSpsRangeExtension().getPersistentRiceAdaptationEnabledFlag();
-        UInt& currentGolombRiceStatistic        = m_golombRiceAdaptationStatistics[tu.getGolombRiceStatisticsIndex(compID)];
+  // Golomb-Rice adaptive parameters
+  //const Bool  bUseGolombRiceParameterAdaptation = sps.getSpsRangeExtension().getPersistentRiceAdaptationEnabledFlag();
+  //      UInt& currentGolombRiceStatistic        = m_golombRiceAdaptationStatistics[tu.getGolombRiceStatisticsIndex(compID)];
 
 
   // Get the scan iterator for this transform block
@@ -359,12 +346,19 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID co
 
     // Setup CABAC contexts
     const UInt contextSet = getContextSetIndex(compID, cgScanOrderIndex, gt1Context == 0);
-    ContextModel* baseContextModel = m_cCUOneSCModel.get(0, 0) + (NUM_ONE_FLAG_CTX_PER_SET * contextSet);
+    ContextModel* baseContextModel = &context
+      .get(TDbrCabacContexts::SyntaxElement::CoeffGt1Flag)
+      .get(0, 0, NUM_ONE_FLAG_CTX_PER_SET * contextSet);
     gt1Context = 1;
 
     // Set Golomb-Rice parameter
-    UInt golombRiceParam            = currentGolombRiceStatistic / RExt__GOLOMB_RICE_INCREMENT_DIVISOR;
-    Bool updateGolombRiceStatistics = bUseGolombRiceParameterAdaptation; // leave the statistics at 0 when not using the adaptation system
+    UInt& currentGolombRiceStatistic =
+      context.getGolombRiceStats(tu.getGolombRiceStatisticsIndex(compID));
+    
+    UInt golombRiceParam = currentGolombRiceStatistic / RExt__GOLOMB_RICE_INCREMENT_DIVISOR;
+    const Bool isPersistentGolombRiceAdaptionEnabled =
+      sps.getSpsRangeExtension().getPersistentRiceAdaptationEnabledFlag();
+    Bool shouldAdaptGolombRiceParam = isPersistentGolombRiceAdaptionEnabled;
 
     // Number of coded greater-than-1 flags
     const Int numGT1FlagsInCG = min(numSCsInCG, C1FLAG_NUMBER);
@@ -398,7 +392,9 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID co
     //   greater than 2 (coeff_abs_level_greater2_flag)
     Bool hasMoreThan0GT2Coeff = false;
     if (gt1Context == 0 && firstGT1CoeffIndex != -1) {
-      baseContextModel = m_cCUAbsSCModel.get(0, 0) + (NUM_ABS_FLAG_CTX_PER_SET * contextSet);
+      baseContextModel = &context
+        .get(TDbrCabacContexts::SyntaxElement::CoeffGt2Flag)
+        .get(0, 0, NUM_ABS_FLAG_CTX_PER_SET * contextSet);
       const Bool isCoeffGT2 = (absCoeffs[firstGT1CoeffIndex] > 2);
       m_pcBinIf->encodeBin(isCoeffGT2 ? 1 : 0, baseContextModel[0]);
       if (isCoeffGT2) {
@@ -442,13 +438,13 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID co
           // Adjust Golomb-Rice parameter
           if (absCoeffs[sigCoeffIndex] > (3 << golombRiceParam)) {
             golombRiceParam =
-              bUseGolombRiceParameterAdaptation ?
+              isPersistentGolombRiceAdaptionEnabled ?
               golombRiceParam + 1 :
               std::min<UInt>(golombRiceParam + 1, 4);
           }
 
           // Update Golumb-Rice parameter statistics
-          if (updateGolombRiceStatistics) {
+          if (shouldAdaptGolombRiceParam) {
             const UInt initialGolombRiceParameter = currentGolombRiceStatistic / RExt__GOLOMB_RICE_INCREMENT_DIVISOR;
 
             if (escapeCodeValue >= (3 << initialGolombRiceParameter)) {
@@ -457,7 +453,7 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID co
               currentGolombRiceStatistic--;
             }
 
-            updateGolombRiceStatistics = false;
+            shouldAdaptGolombRiceParam = false;
           }
         }
 
@@ -493,8 +489,13 @@ Void TDbrCoeffEnc::xCodeLastSignificantXY(UInt xCoord, UInt yCoord, Int width, I
   const UInt xCoordGroup = g_uiGroupIdx[xCoord];
   const UInt yCoordGroup = g_uiGroupIdx[yCoord];
 
-  ContextModel* xCoordContext = m_cCuCtxLastX.get(0, toChannelType(component));
-  ContextModel* yCoordContext = m_cCuCtxLastY.get(0, toChannelType(component));
+  ContextModel* xCoordContext = context
+    .get(TDbrCabacContexts::SyntaxElement::LastSigCoeffX)
+    .get(0, toChannelType(component));
+
+  ContextModel* yCoordContext = context
+    .get(TDbrCabacContexts::SyntaxElement::LastSigCoeffY)
+    .get(0, toChannelType(component));
 
   Int blkSizeOffsetX, blkSizeOffsetY, shiftX, shiftY;
   getLastSignificantContextParameters(
@@ -643,11 +644,13 @@ Void TDbrCoeffEnc::xCodeTransformSkipFlag(TComTU &tu, ComponentID component) {
     return;
   }
 
-  UInt useTransformSkip = cu.getTransformSkip(partIndex,component);
-  m_pcBinIf->encodeBin(
-    useTransformSkip,
-    m_cTransformSkipSCModel.get(0, toChannelType(component), 0)
-  );
+  UInt flag = cu.getTransformSkip(partIndex,component);
+
+  ContextModel& flagContext = context
+    .get(TDbrCabacContexts::SyntaxElement::TransformSkip)
+    .get(0, toChannelType(component), 0);
+
+  m_pcBinIf->encodeBin(flag, flagContext);
 }
 
 
@@ -657,7 +660,7 @@ Void TDbrCoeffEnc::xCodeTransformSkipFlag(TComTU &tu, ComponentID component) {
  * \param tu         transform unit
  * \param component  component
  */
-Void TDbrCoeffEnc::codeExplicitRdpcmMode(TComTU &tu, const ComponentID component) {
+Void TDbrCoeffEnc::xCodeExplicitRdpcmMode(TComTU &tu, const ComponentID component) {
   const TComDataCU&    cu          = *tu.getCU();
   const TComRectangle& rect        = tu.getRect(component);
   const UInt           partIndex   = tu.GetAbsPartIdxTU(component);
@@ -669,16 +672,24 @@ Void TDbrCoeffEnc::codeExplicitRdpcmMode(TComTU &tu, const ComponentID component
   assert(tuHeight == tuWidth);
   assert(tuHeight < 4);
 
+  ContextModel& flagContext = context
+    .get(TDbrCabacContexts::SyntaxElement::ExplicitRdpcmFlag)
+    .get(0, channelType, 0);
+
   if (rdpcmMode == RDPCM_OFF) {
-    m_pcBinIf->encodeBin(0, m_explicitRdpcmFlagSCModel.get(0, channelType, 0));
+    m_pcBinIf->encodeBin(0, flagContext);
 
   } else if (rdpcmMode == RDPCM_HOR || rdpcmMode == RDPCM_VER) {
-    m_pcBinIf->encodeBin(1, m_explicitRdpcmFlagSCModel.get(0, channelType, 0));
+    m_pcBinIf->encodeBin(1, flagContext);
+
+    ContextModel& dirContext = context
+      .get(TDbrCabacContexts::SyntaxElement::ExplicitRdpcmDir)
+      .get(0, channelType, 0);
 
     if (rdpcmMode == RDPCM_HOR) {
-      m_pcBinIf->encodeBin(0, m_explicitRdpcmDirSCModel.get(0, channelType, 0));
+      m_pcBinIf->encodeBin(0, dirContext);
     } else {
-      m_pcBinIf->encodeBin(1, m_explicitRdpcmDirSCModel.get(0, channelType, 0));
+      m_pcBinIf->encodeBin(1, dirContext);
     }
   } else {
     assert(0);
@@ -687,52 +698,52 @@ Void TDbrCoeffEnc::codeExplicitRdpcmMode(TComTU &tu, const ComponentID component
 
 
 
-Void TDbrCoeffEnc::xCodeSigGroupFlag(UInt isGroupSig, UInt contextOffset, ChannelType channelType) {
+Void TDbrCoeffEnc::xCodeSigGroupFlag(UInt isGroupSig, UInt contextGroup, ChannelType channelType) {
   // Layer for coding
   const Int l = 0;
 
   // Flag value to be coded
   const UInt flag = (isGroupSig ? 1 : 0);
 
+  // Context
+  ContextModel& flagContext = context
+    .get(TDbrCabacContexts::SyntaxElement::SigCoeffGroupFlag)
+    .get(0, channelType, contextGroup);
+
   // Code flag in layer
-  layers[l].encodeBin(
-    flag,
-    layers[l]
-      .m_cCUSigCoeffGroupSCModel
-      .get(0, channelType, contextOffset)
-  );
+  m_pcBinIf->encodeBin(flag, flagContext);
 
   // Update higher layer contexts
-  for (int i = l + 1; i < layers.size(); i++) {
+  /*for (int i = l + 1; i < layers.size(); i++) {
     layers[i]
       .m_cCUSigCoeffGroupSCModel
-      .get(0, channelType, contextOffset)
+      .get(0, channelType, contextGroup)
       .update(flag);
-  }
+  }*/
 }
 
 
 
-Void TDbrCoeffEnc::xCodeSigCoeffFlag(UInt isCoeffSig, UInt contextOffset) {
+Void TDbrCoeffEnc::xCodeSigCoeffFlag(UInt isCoeffSig, UInt contextGroup) {
   // Layer for coding
   const Int l = 0;
 
   // Flag value to be coded
   const UInt flag = (isCoeffSig ? 1 : 0);
 
+  // Context
+  ContextModel& flagContext = context
+    .get(TDbrCabacContexts::SyntaxElement::SigCoeffFlag)
+    .get(0, 0, contextGroup);
+
   // Code flag in layer
-  layers[l].encodeBin(
-    flag,
-    layers[l]
-      .m_cCUSigSCModel
-      .get(0, 0, contextOffset)
-  );
+  m_pcBinIf->encodeBin(flag, flagContext);
 
   // Update higher layer contexts
-  for (int i = l + 1; i < layers.size(); i++) {
+  /*for (int i = l + 1; i < layers.size(); i++) {
     layers[i]
       .m_cCUSigSCModel
-      .get(0, 0, contextOffset)
+      .get(0, 0, contextGroup)
       .update(flag);
-  }
+  }*/
 }

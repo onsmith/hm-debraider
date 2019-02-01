@@ -196,8 +196,18 @@ Void TDbrSbac::parseIPCMInfo(TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDepth) 
 
 Void TDbrSbac::parseCoeffNxN(TComTU& rTu, ComponentID compID) {
   assert(xmlWriter != nullptr);
-  xmlWriter->writeOpenTag("coeff");
+
+  xmlWriter->disableWriting();
   TDecSbac::parseCoeffNxN(rTu, compID);
+  xmlWriter->enableWriting();
+
+  xmlWriter->writeOpenTag("coeff");
+  coefficientEncoder.setXmlWriter(xmlWriter);
+  coefficientEncoder.codeCoeffNxN(
+    rTu,
+    rTu.getCU()->getCoeff(compID) + rTu.getCoefficientOffset(compID),
+    compID
+  );
   xmlWriter->writeCloseTag("coeff");
 }
 
