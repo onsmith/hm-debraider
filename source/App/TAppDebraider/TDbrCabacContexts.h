@@ -43,6 +43,7 @@
 
 #include "TLibCommon/TComTU.h"
 #include "TLibCommon/ContextModel3DBuffer.h"
+#include "TLibCommon/TComSlice.h"
 
 
 //! \ingroup TAppDebraider
@@ -148,6 +149,9 @@ public:
   // Gets Golomb Rice statistics
   UInt& getGolombRiceStats(Int s);
   UInt* getGolombRiceStats();
+
+  // Resets entropy contexts
+  Void TDbrCabacContexts::resetEntropy(TComSlice* pSlice);
 };
 
 

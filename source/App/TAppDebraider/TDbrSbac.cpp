@@ -286,3 +286,9 @@ Void TDbrSbac::parseScalingList(TComScalingList* scalingList) {
   TDecSbac::parseScalingList(scalingList);
   xmlWriter->writeCloseTag("scaling-list");
 }
+
+
+Void TDbrSbac::resetEntropy(TComSlice* pSlice) {
+  TDecSbac::resetEntropy(pSlice);
+  coefficientEncoder.resetEntropy(pSlice);
+}

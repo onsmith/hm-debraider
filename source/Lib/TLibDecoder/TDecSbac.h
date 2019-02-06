@@ -74,7 +74,7 @@ public:
   Void xCopyFrom                  ( const TDecSbac* pSrc );
   Void xCopyContextsFrom          ( const TDecSbac* pSrc );
 
-  Void  resetEntropy (TComSlice* pSlice );
+  virtual Void  resetEntropy      (TComSlice* pSlice );
   Void  setBitstream              ( TComInputBitstream* p  ) { m_pcBitstream = p; m_pcTDecBinIf->init( p ); }
   Void  parseVPS                  ( TComVPS* /*pcVPS*/ ) {}
   Void  parseSPS                  ( TComSPS* /*pcSPS*/ ) {}
@@ -88,8 +88,8 @@ public:
   virtual Void  parseSaoMerge     ( UInt&  ruiVal   );
   virtual Void  parseSaoTypeIdx   ( UInt&  ruiVal  );
   virtual Void  parseSaoUflc      ( UInt uiLength, UInt& ruiVal     );
-  virtual Void parseSAOBlkParam   (SAOBlkParam& saoBlkParam, Bool* sliceEnabled, Bool leftMergeAvail, Bool aboveMergeAvail, const BitDepths &bitDepths);
-  virtual Void parseSaoSign       (UInt& val);
+  virtual Void  parseSAOBlkParam  ( SAOBlkParam& saoBlkParam, Bool* sliceEnabled, Bool leftMergeAvail, Bool aboveMergeAvail, const BitDepths &bitDepths);
+  virtual Void  parseSaoSign      ( UInt& val);
 
 private:
 #if RExt__DECODER_DEBUG_BIT_STATISTICS

@@ -126,6 +126,10 @@ public:
   Void parseSaoSign(UInt& val);
   Void parseLastSignificantXY(UInt& uiPosLastX, UInt& uiPosLastY, Int width, Int height, ComponentID component, UInt uiScanIdx);
   Void parseScalingList(TComScalingList* scalingList);
+
+
+  // Override TDecSbac virtual method to reset the entropy
+  Void resetEntropy(TComSlice* pSlice);
 };
 
 

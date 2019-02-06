@@ -769,9 +769,15 @@ Void TDbrCoeffEnc::xCodeSigCoeffFlag(UInt isCoeffSig, UInt contextGroup) {
 
 
 
-
 Void TDbrCoeffEnc::xEncodeBinsEpOneAtATime(UInt bins, UInt numBins) {
   for (int i = numBins - 1; i >= 0; i--) {
     m_pcBinIf->encodeBinEP((bins >> i) & 0x1);
   }
+}
+
+
+
+
+Void TDbrCoeffEnc::resetEntropy(TComSlice* pSlice) {
+  context.resetEntropy(pSlice);
 }

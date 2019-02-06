@@ -90,6 +90,9 @@ public:
   // Sets the bin writer
   Void setXmlWriter(TDbrXmlWriter* writer);
 
+  // Resets the internal entropy
+  Void resetEntropy(TComSlice* pSlice);
+
 
 protected:
   // Codes the (x, y) position of the last significant coefficient within a

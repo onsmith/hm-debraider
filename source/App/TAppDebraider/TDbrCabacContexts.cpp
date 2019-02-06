@@ -121,3 +121,67 @@ UInt* TDbrCabacContexts::getGolombRiceStats() {
 UInt& TDbrCabacContexts::getGolombRiceStats(Int i) {
   return m_golombRiceAdaptationStatistics[i];
 }
+
+
+
+Void TDbrCabacContexts::resetEntropy(TComSlice* pSlice) {
+  SliceType sliceType = pSlice->getSliceType();
+  Int       qp        = pSlice->getSliceQp();
+
+  if (pSlice->getPPS()->getCabacInitPresentFlag() && pSlice->getCabacInitFlag()) {
+    switch (sliceType) {
+    // Change initialization table to B_SLICE initialization
+    case P_SLICE:
+      sliceType = B_SLICE;
+      break;
+
+    // Change initialization table to P_SLICE initialization
+    case B_SLICE:           
+      sliceType = P_SLICE;
+      break;
+
+    // Should never happen
+    default:
+      assert(0);
+      break;
+    }
+  }
+
+  m_cCUSplitFlagSCModel.initBuffer             (sliceType, qp, (UChar*) INIT_SPLIT_FLAG);
+  m_cCUSkipFlagSCModel.initBuffer              (sliceType, qp, (UChar*) INIT_SKIP_FLAG);
+  m_cCUMergeFlagExtSCModel.initBuffer          (sliceType, qp, (UChar*) INIT_MERGE_FLAG_EXT);
+  m_cCUMergeIdxExtSCModel.initBuffer           (sliceType, qp, (UChar*) INIT_MERGE_IDX_EXT);
+  m_cCUPartSizeSCModel.initBuffer              (sliceType, qp, (UChar*) INIT_PART_SIZE);
+  m_cCUPredModeSCModel.initBuffer              (sliceType, qp, (UChar*) INIT_PRED_MODE);
+  m_cCUIntraPredSCModel.initBuffer             (sliceType, qp, (UChar*) INIT_INTRA_PRED_MODE);
+  m_cCUChromaPredSCModel.initBuffer            (sliceType, qp, (UChar*) INIT_CHROMA_PRED_MODE);
+  m_cCUInterDirSCModel.initBuffer              (sliceType, qp, (UChar*) INIT_INTER_DIR);
+  m_cCUMvdSCModel.initBuffer                   (sliceType, qp, (UChar*) INIT_MVD);
+  m_cCURefPicSCModel.initBuffer                (sliceType, qp, (UChar*) INIT_REF_PIC);
+  m_cCUDeltaQpSCModel.initBuffer               (sliceType, qp, (UChar*) INIT_DQP);
+  m_cCUQtCbfSCModel.initBuffer                 (sliceType, qp, (UChar*) INIT_QT_CBF);
+  m_cCUQtRootCbfSCModel.initBuffer             (sliceType, qp, (UChar*) INIT_QT_ROOT_CBF);
+  m_cCUSigCoeffGroupSCModel.initBuffer         (sliceType, qp, (UChar*) INIT_SIG_CG_FLAG);
+  m_cCUSigSCModel.initBuffer                   (sliceType, qp, (UChar*) INIT_SIG_FLAG);
+  m_cCuCtxLastX.initBuffer                     (sliceType, qp, (UChar*) INIT_LAST);
+  m_cCuCtxLastY.initBuffer                     (sliceType, qp, (UChar*) INIT_LAST);
+  m_cCUOneSCModel.initBuffer                   (sliceType, qp, (UChar*) INIT_ONE_FLAG);
+  m_cCUAbsSCModel.initBuffer                   (sliceType, qp, (UChar*) INIT_ABS_FLAG);
+  m_cMVPIdxSCModel.initBuffer                  (sliceType, qp, (UChar*) INIT_MVP_IDX);
+  m_cSaoMergeSCModel.initBuffer                (sliceType, qp, (UChar*) INIT_SAO_MERGE_FLAG);
+  m_cSaoTypeIdxSCModel.initBuffer              (sliceType, qp, (UChar*) INIT_SAO_TYPE_IDX);
+  m_cCUTransSubdivFlagSCModel.initBuffer       (sliceType, qp, (UChar*) INIT_TRANS_SUBDIV_FLAG);
+  m_cTransformSkipSCModel.initBuffer           (sliceType, qp, (UChar*) INIT_TRANSFORMSKIP_FLAG);
+  m_CUTransquantBypassFlagSCModel.initBuffer   (sliceType, qp, (UChar*) INIT_CU_TRANSQUANT_BYPASS_FLAG);
+  m_explicitRdpcmFlagSCModel.initBuffer        (sliceType, qp, (UChar*) INIT_EXPLICIT_RDPCM_FLAG);
+  m_explicitRdpcmDirSCModel.initBuffer         (sliceType, qp, (UChar*) INIT_EXPLICIT_RDPCM_DIR);
+  m_cCrossComponentPredictionSCModel.initBuffer(sliceType, qp, (UChar*) INIT_CROSS_COMPONENT_PREDICTION);
+  m_ChromaQpAdjFlagSCModel.initBuffer          (sliceType, qp, (UChar*) INIT_CHROMA_QP_ADJ_FLAG);
+  m_ChromaQpAdjIdcSCModel.initBuffer           (sliceType, qp, (UChar*) INIT_CHROMA_QP_ADJ_IDC);
+
+  for (UInt statisticIndex = 0; statisticIndex < RExt__GOLOMB_RICE_ADAPTATION_STATISTICS_SETS; statisticIndex++) {
+    m_golombRiceAdaptationStatistics[statisticIndex] = 0;
+  }
+
+  // m_pcTDecBinIf->start();
+}
