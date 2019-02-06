@@ -1,6 +1,10 @@
 #include "XmlBinEncoder.h"
 
 
+TDbrXmlWriter* XmlBinEncoder::getXmlWriter() {
+  return xmlWriter;
+}
+
 
 Void XmlBinEncoder::setXmlWriter(TDbrXmlWriter* writer) {
   xmlWriter = writer;

@@ -5,10 +5,11 @@
 
 Void TDbrSbac::setXmlWriter(TDbrXmlWriter* xmlWriter) {
   this->xmlWriter = xmlWriter;
+  coefficientEncoder.setXmlWriter(xmlWriter);
 }
 
 
-TDbrXmlWriter* TDbrSbac::setXmlWriter() {
+TDbrXmlWriter* TDbrSbac::getXmlWriter() {
   return xmlWriter;
 }
 
@@ -202,12 +203,7 @@ Void TDbrSbac::parseCoeffNxN(TComTU& rTu, ComponentID compID) {
   xmlWriter->enableWriting();
 
   xmlWriter->writeOpenTag("coeff");
-  coefficientEncoder.setXmlWriter(xmlWriter);
-  coefficientEncoder.codeCoeffNxN(
-    rTu,
-    rTu.getCU()->getCoeff(compID) + rTu.getCoefficientOffset(compID),
-    compID
-  );
+  coefficientEncoder.codeCoeffNxN(rTu, compID);
   xmlWriter->writeCloseTag("coeff");
 }
 

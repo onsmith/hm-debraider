@@ -97,10 +97,20 @@ static Bool isImplicitlyRDPCMCoded(const TComTU &tu, const ComponentID component
 
 
 
-Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID compID) {
+Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, const ComponentID component) {
+  codeCoeffNxN(
+    tu,
+    tu.getCU()->getCoeff(component) + tu.getCoefficientOffset(component),
+    component
+  );
+}
+
+
+
+Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* coefficients, const ComponentID component) {
         TComDataCU&    cu          = *tu.getCU();
-  const UInt           tuPartIndex = tu.GetAbsPartIdxTU(compID);
-  const TComRectangle& tuRect      = tu.getRect(compID);
+  const UInt           tuPartIndex = tu.GetAbsPartIdxTU(component);
+  const TComRectangle& tuRect      = tu.getRect(component);
   const UInt           tuWidth     = tuRect.width;
   const UInt           tuHeight    = tuRect.height;
   const TComSlice&     slice       = *cu.getSlice();
@@ -118,7 +128,7 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID co
 
   // Count total number of significant coefficients
   const UInt totalNumSigCoeffs =
-    TEncEntropy::countNonZeroCoeffs(pcCoef, tuWidth * tuHeight);
+    TEncEntropy::countNonZeroCoeffs(coefficients, tuWidth * tuHeight);
   if (totalNumSigCoeffs == 0) {
     std::cerr << "ERROR: codeCoeffNxN called for empty TU!" << std::endl;
     assert(false);
@@ -129,7 +139,7 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID co
   // Prepare coding block parameters
   const UInt        tuWidthLog2            = g_aucConvertToBit[tuWidth] + 2;
   const UInt        tuHeightLog2           = g_aucConvertToBit[tuHeight] + 2;
-  const ChannelType channelType            = toChannelType(compID);
+  const ChannelType channelType            = toChannelType(component);
   const Bool        isPrecisionExtended    = sps.getSpsRangeExtension().getExtendedPrecisionProcessingFlag();
   const Bool        alignCABACBeforeBypass = sps.getSpsRangeExtension().getCabacBypassAlignmentEnabledFlag();
   const Int         maxLog2TrDynamicRange  = sps.getMaxLog2TrDynamicRange(channelType);
@@ -137,23 +147,23 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID co
 
 
   // Code implicit RDPCM mode
-  if (cu.getCUTransquantBypass(tuPartIndex) || isImplicitlyRDPCMCoded(tu, compID)) {
+  if (cu.getCUTransquantBypass(tuPartIndex) || isImplicitlyRDPCMCoded(tu, component)) {
     isSignHidingEnabled = false;
     if (!cu.isIntra(tuPartIndex) && cu.isRDPCMEnabled(tuPartIndex)) {
-      xCodeExplicitRdpcmMode(tu, compID);
+      xCodeExplicitRdpcmMode(tu, component);
     }
   }
 
 
   // Code transform skip mode
   if (pps.getUseTransformSkip()) {
-    xCodeTransformSkipFlag(tu, compID);
-    if (cu.getTransformSkip(tuPartIndex, compID) && !cu.isIntra(tuPartIndex) && cu.isRDPCMEnabled(tuPartIndex)) {
+    xCodeTransformSkipFlag(tu, component);
+    if (cu.getTransformSkip(tuPartIndex, component) && !cu.isIntra(tuPartIndex) && cu.isRDPCMEnabled(tuPartIndex)) {
       //  This TU has coefficients and is transform skipped. Check whether is inter coded and if yes encode the explicit RDPCM mode
-      xCodeExplicitRdpcmMode(tu, compID);
+      xCodeExplicitRdpcmMode(tu, component);
 
       //  Sign data hiding is force-disabled for horizontal and vertical explicit RDPCM modes
-      if (cu.getExplicitRdpcmMode(compID, tuPartIndex) != RDPCM_OFF) {
+      if (cu.getExplicitRdpcmMode(component, tuPartIndex) != RDPCM_OFF) {
         isSignHidingEnabled = false;
       }
     }
@@ -162,12 +172,12 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID co
 
   // Golomb-Rice adaptive parameters
   //const Bool  bUseGolombRiceParameterAdaptation = sps.getSpsRangeExtension().getPersistentRiceAdaptationEnabledFlag();
-  //      UInt& currentGolombRiceStatistic        = m_golombRiceAdaptationStatistics[tu.getGolombRiceStatisticsIndex(compID)];
+  //      UInt& currentGolombRiceStatistic        = m_golombRiceAdaptationStatistics[tu.getGolombRiceStatisticsIndex(component)];
 
 
   // Get the scan iterator for this transform block
   TUEntropyCodingParameters codingParameters;
-  getTUEntropyCodingParameters(codingParameters, tu, compID);
+  getTUEntropyCodingParameters(codingParameters, tu, component);
 
 
   // Tracks which 4x4 coefficient groups contain significant coefficients
@@ -185,7 +195,7 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID co
   for (UInt coeffScanOrderIndex = 0, sigCoeffNum = 0; sigCoeffNum < totalNumSigCoeffs; coeffScanOrderIndex++) {
     const UInt coeffRasterOrderIndex = codingParameters.scan[coeffScanOrderIndex];
 
-    if (pcCoef[coeffRasterOrderIndex] != 0) {
+    if (coefficients[coeffRasterOrderIndex] != 0) {
       UInt posY = coeffRasterOrderIndex >> tuWidthLog2;
       UInt posX = coeffRasterOrderIndex - (posY << tuWidthLog2);
       UInt cgIndex =
@@ -213,7 +223,7 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID co
       posLastY,
       tuWidth,
       tuHeight,
-      compID,
+      component,
       codingParameters.scanType
     );
   }
@@ -247,8 +257,8 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID co
 
     // Implicitly signal the last significant coefficient
     if (coeffScanOrderIndex == lscScanOrderIndex) {
-      absCoeffs[0] = static_cast<Int>(abs(pcCoef[lscRasterOrderIndex]));
-      coeffSigns = (pcCoef[lscRasterOrderIndex] < 0);
+      absCoeffs[0] = static_cast<Int>(abs(coefficients[lscRasterOrderIndex]));
+      coeffSigns = (coefficients[lscRasterOrderIndex] < 0);
       firstSCInCGScanOrderIndex = coeffScanOrderIndex;
       lastSCInCGScanOrderIndex = coeffScanOrderIndex;
       numSCsInCG = 1;
@@ -295,7 +305,7 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID co
         // Loop through all coefficients in the 4x4 block
         for ( ; coeffScanOrderIndex >= firstCoeffInCGScanOrderIndex; coeffScanOrderIndex--) {
           UInt coeffRasterOrderIndex = codingParameters.scan[coeffScanOrderIndex];
-          UInt isCoeffSigFlag = (pcCoef[coeffRasterOrderIndex] ? 1 : 0);
+          UInt isCoeffSigFlag = (coefficients[coeffRasterOrderIndex] ? 1 : 0);
 
           // Encode significant coefficient flag
           // Note: Don't need to signal significance for the last coefficient in
@@ -313,16 +323,16 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID co
 
             xCodeSigCoeffFlag(
               isGroupSignificant[cgRasterOrderIndex],
-              contextOffset + getSignificanceMapContextOffset(compID)
+              contextOffset + getSignificanceMapContextOffset(component)
             );
           }
 
           // Store significant coefficients to encode during later scans
           if (isCoeffSigFlag) {
             absCoeffs[numSCsInCG] =
-              static_cast<Int>(abs(pcCoef[coeffRasterOrderIndex]));
+              static_cast<Int>(abs(coefficients[coeffRasterOrderIndex]));
             numSCsInCG++;
-            coeffSigns = (coeffSigns << 1) + (pcCoef[coeffRasterOrderIndex] < 0 ? 1 : 0);
+            coeffSigns = (coeffSigns << 1) + (coefficients[coeffRasterOrderIndex] < 0 ? 1 : 0);
             if (lastSCInCGScanOrderIndex == -1) {
               lastSCInCGScanOrderIndex = coeffScanOrderIndex;
             }
@@ -345,7 +355,7 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID co
       (lastSCInCGScanOrderIndex - firstSCInCGScanOrderIndex >= SBH_THRESHOLD);
 
     // Setup CABAC contexts
-    const UInt contextSet = getContextSetIndex(compID, cgScanOrderIndex, gt1Context == 0);
+    const UInt contextSet = getContextSetIndex(component, cgScanOrderIndex, gt1Context == 0);
     ContextModel* baseContextModel = &context
       .get(TDbrCabacContexts::SyntaxElement::CoeffGt1Flag)
       .get(0, 0, NUM_ONE_FLAG_CTX_PER_SET * contextSet);
@@ -353,7 +363,7 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID co
 
     // Set Golomb-Rice parameter
     UInt& currentGolombRiceStatistic =
-      context.getGolombRiceStats(tu.getGolombRiceStatisticsIndex(compID));
+      context.getGolombRiceStats(tu.getGolombRiceStatisticsIndex(component));
     
     UInt golombRiceParam = currentGolombRiceStatistic / RExt__GOLOMB_RICE_INCREMENT_DIVISOR;
     const Bool isPersistentGolombRiceAdaptionEnabled =
@@ -481,6 +491,10 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID co
  * This method encodes the X and Y component within a block of the last significant coefficient.
  */
 Void TDbrCoeffEnc::xCodeLastSignificantXY(UInt xCoord, UInt yCoord, Int width, Int height, ComponentID component, UInt scanIndex) {
+  // Open tag
+  xmlBinEncoder.getXmlWriter()->writeOpenTag("last-sig-xy");
+
+
   if (scanIndex == SCAN_VER) {
     swap(xCoord, yCoord);
     swap(width,  height);
@@ -545,7 +559,7 @@ Void TDbrCoeffEnc::xCodeLastSignificantXY(UInt xCoord, UInt yCoord, Int width, I
     }
   }
 
-  
+
   // Code equiprobable y coordinate part
   if (yCoordGroup > 3) {
     UInt numBins = (yCoordGroup - 2) >> 1;
@@ -555,6 +569,10 @@ Void TDbrCoeffEnc::xCodeLastSignificantXY(UInt xCoord, UInt yCoord, Int width, I
       m_pcBinIf->encodeBinEP((yCoord >> i) & 1);
     }
   }
+
+
+  // Close tag
+  xmlBinEncoder.getXmlWriter()->writeCloseTag("last-sig-xy");
 }
 
 
@@ -564,7 +582,7 @@ Void TDbrCoeffEnc::xCodeLastSignificantXY(UInt xCoord, UInt yCoord, Int width, I
  * \param symbol                  value of coeff_abs_level_minus3
  * \param rParam                  reference to Rice parameter
  * \param useLimitedPrefixLength
- * \param maxLog2TrDynamicRange 
+ * \param maxLog2TrDynamicRange
  */
 Void TDbrCoeffEnc::xWriteCoefRemainExGolomb(UInt symbol, UInt &rParam, const Bool useLimitedPrefixLength, const Int maxLog2TrDynamicRange) {
   Int  codeNumber = static_cast<Int>(symbol);

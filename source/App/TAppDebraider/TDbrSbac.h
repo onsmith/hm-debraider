@@ -76,7 +76,7 @@ public:
 
   // Xml writer management
   Void setXmlWriter(TDbrXmlWriter* xmlWriter);
-  TDbrXmlWriter* setXmlWriter();
+  TDbrXmlWriter* getXmlWriter();
 
 
   // Cabac reader management

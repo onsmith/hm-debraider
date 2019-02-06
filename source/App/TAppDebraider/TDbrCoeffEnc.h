@@ -35,7 +35,7 @@
 /**
  *  \file     TDbrCoeffEnc.h
  *  \project  TAppDebraider
- *  \brief    Coefficient encoder
+ *  \brief    Layered coefficient encoder
  */
 
 
@@ -60,10 +60,10 @@ protected:
   // Layers
   vector<TDbrLayer> layers;
 
-  // Xml bin writer
+  // Xml bin encoder
   XmlBinEncoder xmlBinEncoder;
 
-  // Bin writer
+  // Pointer to xmlBinEncoder
   TEncBinIf* m_pcBinIf;
 
   // Cabac context
@@ -81,8 +81,11 @@ public:
   // Adds a layer to the encoder
   Void addLayer();
 
+  // Codes the coefficients for a given transform block
+  Void codeCoeffNxN(TComTU &tu, const ComponentID component);
+
   // Codes the given coefficients for a given transform block
-  Void codeCoeffNxN(TComTU &tu, TCoeff* pcCoef, const ComponentID compID);
+  Void codeCoeffNxN(TComTU &tu, TCoeff* coefficients, const ComponentID component);
 
   // Sets the bin writer
   Void setXmlWriter(TDbrXmlWriter* writer);
