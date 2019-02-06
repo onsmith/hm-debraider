@@ -638,10 +638,14 @@ Void TDbrCoeffEnc::xWriteCoefRemainExGolomb(UInt symbol, UInt &rParam, const Boo
       codeNumber -= (1 << length++);
     }
 
-    m_pcBinIf->encodeBinsEP(
+    xEncodeBinsEpOneAtATime(
       (1 << (COEF_REMAIN_BIN_REDUCTION+length + 1 - rParam)) - 2,
       COEF_REMAIN_BIN_REDUCTION + length + 1 - rParam
     );
+    //m_pcBinIf->encodeBinsEP(
+    //  (1 << (COEF_REMAIN_BIN_REDUCTION+length + 1 - rParam)) - 2,
+    //  COEF_REMAIN_BIN_REDUCTION + length + 1 - rParam
+    //);
     m_pcBinIf->encodeBinsEP(codeNumber, length);
   }
 }
