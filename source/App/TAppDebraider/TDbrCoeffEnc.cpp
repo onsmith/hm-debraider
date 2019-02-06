@@ -322,7 +322,7 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* coefficients, const Componen
             );
 
             xCodeSigCoeffFlag(
-              isGroupSignificant[cgRasterOrderIndex],
+              isCoeffSigFlag,
               contextOffset + getSignificanceMapContextOffset(component)
             );
           }
@@ -585,12 +585,13 @@ Void TDbrCoeffEnc::xCodeLastSignificantXY(UInt xCoord, UInt yCoord, Int width, I
  * \param maxLog2TrDynamicRange
  */
 Void TDbrCoeffEnc::xWriteCoefRemainExGolomb(UInt symbol, UInt &rParam, const Bool useLimitedPrefixLength, const Int maxLog2TrDynamicRange) {
-  Int  codeNumber = static_cast<Int>(symbol);
+  Int codeNumber = static_cast<Int>(symbol);
 
 
   if (codeNumber < (COEF_REMAIN_BIN_REDUCTION << rParam)) {
     UInt length = codeNumber >> rParam;
-    m_pcBinIf->encodeBinsEP((1 << (length + 1)) - 2, length + 1);
+    xEncodeBinsEpOneAtATime((1 << (length + 1)) - 2, length + 1);
+    //m_pcBinIf->encodeBinsEP((1 << (length + 1)) - 2, length + 1);
     m_pcBinIf->encodeBinsEP((codeNumber % (1 << rParam)), rParam);
 
 
@@ -764,4 +765,13 @@ Void TDbrCoeffEnc::xCodeSigCoeffFlag(UInt isCoeffSig, UInt contextGroup) {
       .get(0, 0, contextGroup)
       .update(flag);
   }*/
+}
+
+
+
+
+Void TDbrCoeffEnc::xEncodeBinsEpOneAtATime(UInt bins, UInt numBins) {
+  for (int i = numBins - 1; i >= 0; i--) {
+    m_pcBinIf->encodeBinEP((bins >> i) & 0x1);
+  }
 }

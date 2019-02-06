@@ -3,11 +3,12 @@
 
 
 TDbrXmlWriter::TDbrXmlWriter() :
-  isWritable(true) {
+  isWritableFlag(true) {
 }
 
 
 TDbrXmlWriter::TDbrXmlWriter(std::ostream& stream) :
+  isWritableFlag(true),
   stream(&stream) {
 }
 
@@ -22,23 +23,23 @@ Void TDbrXmlWriter::setStream(std::ostream* stream) {
 }
 
 
-Bool TDbrXmlWriter::isWritingEnabled() const {
-  return isWritable;
+Bool TDbrXmlWriter::isWritable() const {
+  return isWritableFlag;
 }
 
 
 Void TDbrXmlWriter::enableWriting() {
-  isWritable = true;
+  isWritableFlag = true;
 }
 
 
 Void TDbrXmlWriter::disableWriting() {
-  isWritable = false;
+  isWritableFlag = false;
 }
 
 
 Void TDbrXmlWriter::writeOpenTag(const std::string& tagName) {
-  if (isWritable) {
+  if (isWritableFlag) {
     assert(stream != nullptr);
     *stream << "<" << tagName << ">\n";
   }
@@ -46,7 +47,7 @@ Void TDbrXmlWriter::writeOpenTag(const std::string& tagName) {
 
 
 Void TDbrXmlWriter::writeCloseTag(const std::string& tagName) {
-  if (isWritable) {
+  if (isWritableFlag) {
     assert(stream != nullptr);
     *stream << "</" << tagName << ">\n";
   }
@@ -54,7 +55,7 @@ Void TDbrXmlWriter::writeCloseTag(const std::string& tagName) {
 
 
 Void TDbrXmlWriter::writeOpenTag(const InputNALUnit& nalu) {
-  if (isWritable) {
+  if (isWritableFlag) {
     *stream <<
       "<nalu" <<
       " type=\"" << nalu.m_nalUnitType << "\"" <<

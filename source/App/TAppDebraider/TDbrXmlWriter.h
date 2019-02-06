@@ -58,7 +58,7 @@ private:
   std::ostream* stream;
 
   // Allows the writer to be temporarily disabled
-  Bool isWritable;
+  Bool isWritableFlag;
 
 
 public:
@@ -73,7 +73,7 @@ public:
 
 
   // Stream enabled/disabled status management
-  Bool isWritingEnabled() const;
+  Bool isWritable() const;
   Void enableWriting();
   Void disableWriting();
 
@@ -90,7 +90,7 @@ public:
   // Value output
   template<typename T>
   Void writeValueTag(const std::string& tagName, T body) {
-    if (isWritable) {
+    if (isWritableFlag) {
       *stream <<
         "<" << tagName << ">" <<
         body <<
@@ -102,7 +102,7 @@ public:
   // Value output with bits
   template<typename T>
   Void writeValueTag(const std::string& tagName, T body, UInt numBits) {
-    if (isWritable) {
+    if (isWritableFlag) {
       *stream <<
         "<" << tagName << " bits=\"" << numBits << "\">" <<
         body <<

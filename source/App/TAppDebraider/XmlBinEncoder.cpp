@@ -82,7 +82,9 @@ Void XmlBinEncoder::encodeBinEP(UInt uiBin) {
 
 Void XmlBinEncoder::encodeBinsEP(UInt uiBins, Int numBins) {
   assert(xmlWriter != nullptr);
-  xmlWriter->writeValueTag("bins-ep", uiBins, numBins);
+  if (numBins > 0) {
+    xmlWriter->writeValueTag("bins-ep", uiBins, numBins);
+  }
 }
 
 

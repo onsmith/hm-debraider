@@ -110,6 +110,9 @@ protected:
 
   // Codes the significance flag for a coefficient
   Void xCodeSigCoeffFlag(UInt isCoeffSig, UInt contextOffset);
+
+  // Separates and writes equiprobable bins one at a time
+  Void xEncodeBinsEpOneAtATime(UInt bins, UInt numBins);
 };
 
 
