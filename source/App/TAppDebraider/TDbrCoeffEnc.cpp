@@ -435,7 +435,11 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* coefficients, const Componen
         UInt baseLevel = (sigCoeffIndex < C1FLAG_NUMBER) ? (2 + gt2CoeffAddin) : 1;
 
         if (absCoeffs[sigCoeffIndex] >= baseLevel) {
-          const UInt escapeCodeValue = absCoeffs[sigCoeffIndex] - baseLevel;
+          UInt escapeCodeValue = 1; //absCoeffs[sigCoeffIndex] - baseLevel;
+          if (!isLuma(component)) {
+            escapeCodeValue = absCoeffs[sigCoeffIndex] - baseLevel;
+          }
+          absCoeffs[sigCoeffIndex] = escapeCodeValue + baseLevel;
 
           // Write Golomb code
           xWriteCoefRemainExGolomb(
