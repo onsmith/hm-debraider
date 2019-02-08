@@ -806,9 +806,17 @@ UInt TDbrCoeffEnc::xGetBudget() const {
 }
 
 
+
 Void TDbrCoeffEnc::xAdjustCodedValue(UInt& value, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange) {
   UInt codedBits;
   Int numCodedBits;
+
+  // Allocate bits for this coefficient to each layer
+  for (TDbrLayer layer : layers) {
+    layer.addToBudget(1);
+  }
+
+  // Calculate number of bits we have to work with
   Int availableBits = xGetBudget();
 
   // Try encoding the Golomb-Rice code
@@ -824,7 +832,7 @@ Void TDbrCoeffEnc::xAdjustCodedValue(UInt& value, UInt riceParam, Bool useLimite
   UInt numBitsToWrite = min(numCodedBits, availableBits);
   for (TDbrLayer layer : layers) {
     UInt numBitsCodedInThisLayer = min(layer.getBudgetInBits(), numBitsToWrite);
-    layer.useBits(numBitsCodedInThisLayer);
+    layer.spendBits(numBitsCodedInThisLayer);
     numBitsToWrite -= numBitsCodedInThisLayer;
 
     if (numBitsToWrite == 0) {

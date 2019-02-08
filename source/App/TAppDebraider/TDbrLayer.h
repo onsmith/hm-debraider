@@ -80,7 +80,8 @@ public:
   // Bit budget management
   UInt getBudget() const;
   UInt getBudgetInBits() const;
-  Void useBits(UInt numBits);
+  Void spendBits(UInt numBits);
+  Void addToBudget(UInt numBits);
 };
 
 
