@@ -51,6 +51,10 @@
 
 
 class TDbrLayer {
+public:
+  static const UInt FIXED_POINT_PRECISION = 5;
+
+
 protected:
   // CABAC counter
   TEncBinCABACCounter cabacEncoder;
@@ -61,6 +65,9 @@ protected:
   // Contexts
   TDbrCabacContexts contexts;
 
+  // Bit budget
+  UInt budget;
+
 
 public:
   // Constructor
@@ -69,6 +76,11 @@ public:
   // Bin encoders
   Void encodeBin(UInt value, ContextModel& context);
   Void encodeBinEP(UInt value);
+
+  // Bit budget management
+  UInt getBudget() const;
+  UInt getBudgetInBits() const;
+  Void useBits(UInt numBits);
 };
 
 

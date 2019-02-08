@@ -435,10 +435,16 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* coefficients, const Componen
         UInt baseLevel = (sigCoeffIndex < C1FLAG_NUMBER) ? (2 + gt2CoeffAddin) : 1;
 
         if (absCoeffs[sigCoeffIndex] >= baseLevel) {
-          UInt escapeCodeValue = 1; //absCoeffs[sigCoeffIndex] - baseLevel;
-          if (!isLuma(component)) {
-            escapeCodeValue = absCoeffs[sigCoeffIndex] - baseLevel;
-          }
+          // Adjust coded value
+          UInt escapeCodeValue = absCoeffs[sigCoeffIndex] - baseLevel;
+          xAdjustCodedValue(
+            escapeCodeValue,
+            golombRiceParam,
+            isPrecisionExtended,
+            maxLog2TrDynamicRange
+          );
+
+          // Update coefficient level based on adjusted coded value
           absCoeffs[sigCoeffIndex] = escapeCodeValue + baseLevel;
 
           // Write Golomb code
@@ -785,7 +791,188 @@ Void TDbrCoeffEnc::xEncodeBinsEpOneAtATime(UInt bins, UInt numBins) {
 
 
 
-
 Void TDbrCoeffEnc::resetEntropy(TComSlice* pSlice) {
   context.resetEntropy(pSlice);
+}
+
+
+
+UInt TDbrCoeffEnc::xGetBudget() const {
+  UInt budget = 0;
+  for (TDbrLayer layer : layers) {
+    budget += layer.getBudgetInBits();
+  }
+  return budget;
+}
+
+
+Void TDbrCoeffEnc::xAdjustCodedValue(UInt& value, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange) {
+  UInt codedBits;
+  Int numCodedBits;
+  Int availableBits = xGetBudget();
+
+  // Try encoding the Golomb-Rice code
+  xGetRemCoeffBits(value, riceParam, useLimitedPrefixLength, maxLog2TrDynamicRange, codedBits, numCodedBits);
+
+  // If the budget was exceeded, zero out all bits past the budget
+  if (numCodedBits > availableBits) {
+    codedBits -= (codedBits & ((0x1 << (numCodedBits - availableBits)) - 1));
+    xGetRemCoeffValue(value, riceParam, useLimitedPrefixLength, maxLog2TrDynamicRange, codedBits, numCodedBits);
+  }
+
+  // Account for the bits that were actually signaled
+  UInt numBitsToWrite = min(numCodedBits, availableBits);
+  for (TDbrLayer layer : layers) {
+    UInt numBitsCodedInThisLayer = min(layer.getBudgetInBits(), numBitsToWrite);
+    layer.useBits(numBitsCodedInThisLayer);
+    numBitsToWrite -= numBitsCodedInThisLayer;
+
+    if (numBitsToWrite == 0) {
+      break;
+    }
+  }
+}
+
+
+
+static inline Void writeBits(UInt& bits, Int& numCodedBits, UInt bitsToWrite, UInt numBitsToWrite) {
+  assert(numCodedBits + numBitsToWrite <= 32);
+  bits = (bits << numBitsToWrite) | bitsToWrite;
+  numCodedBits += numBitsToWrite;
+}
+
+
+
+static inline Void readBits(UInt& bits, Int& numBitsLeft, UInt& bitsRead, UInt numBitsToRead) {
+  assert(numBitsLeft >= numBitsToRead);
+  bitsRead = (bits >> (numBitsLeft - numBitsToRead)) & ((0x1 << numBitsToRead) - 1);
+  numBitsLeft -= numBitsToRead;
+}
+
+
+
+/**
+ * Codes coeff_abs_level_minus3
+ * \param symbol                  value of coeff_abs_level_minus3
+ * \param riceParam               Rice parameter
+ * \param useLimitedPrefixLength
+ * \param maxLog2TrDynamicRange
+ * \param codedBits               coded bits
+ * \param numCodedBits            number of coded bits
+ */
+Void xGetRemCoeffBits(UInt ValueToEncode, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange, UInt& codedBits, Int& numCodedBits) {
+  Int codeNumber = static_cast<Int>(ValueToEncode);
+  codedBits = 0;
+  numCodedBits = 0;
+
+  if (codeNumber < (COEF_REMAIN_BIN_REDUCTION << riceParam)) {
+    UInt length = codeNumber >> riceParam;
+    writeBits(codedBits, numCodedBits, (1 << (length + 1)) - 2, length + 1);
+    writeBits(codedBits, numCodedBits, codeNumber % (1 << riceParam), riceParam);
+
+
+  } else if (useLimitedPrefixLength) {
+    const UInt maximumPrefixLength =
+      (32 - (COEF_REMAIN_BIN_REDUCTION + maxLog2TrDynamicRange));
+
+    UInt prefixLength = 0;
+    UInt suffixLength = MAX_UINT;
+    UInt codeValue    = (ValueToEncode >> riceParam) - COEF_REMAIN_BIN_REDUCTION;
+
+    if (codeValue >= ((1 << maximumPrefixLength) - 1)) {
+      prefixLength = maximumPrefixLength;
+      suffixLength = maxLog2TrDynamicRange - riceParam;
+    } else {
+      while (codeValue > ((2 << prefixLength) - 2)) {
+        prefixLength++;
+      }
+
+      suffixLength = prefixLength + 1; // +1 for the separator bit
+    }
+
+    const UInt suffix = codeValue - ((1 << prefixLength) - 1);
+
+    const UInt totalPrefixLength = prefixLength + COEF_REMAIN_BIN_REDUCTION;
+    const UInt prefix            = (1 << totalPrefixLength) - 1;
+    const UInt rParamBitMask     = (1 << riceParam) - 1;
+
+    // prefix
+    writeBits(codedBits, numCodedBits, prefix, totalPrefixLength);
+
+    // separator, suffix, and rParam
+    writeBits(
+      codedBits,
+      numCodedBits,
+      (suffix << riceParam) | (ValueToEncode & rParamBitMask),
+      suffixLength + riceParam
+    );
+
+
+  } else {
+    UInt length = riceParam;
+    codeNumber = codeNumber - (COEF_REMAIN_BIN_REDUCTION << riceParam);
+
+    while (codeNumber >= (1 << length)) {
+      codeNumber -= (1 << length++);
+    }
+
+    writeBits(
+      codedBits,
+      numCodedBits,
+      (1 << (COEF_REMAIN_BIN_REDUCTION + length + 1 - riceParam)) - 2,
+      COEF_REMAIN_BIN_REDUCTION + length + 1 - riceParam
+    );
+
+    writeBits(codedBits, numCodedBits, codeNumber, length);
+  }
+}
+
+
+
+/** Parsing of coeff_abs_level_remaing
+ * \param rSymbol                 reference to coeff_abs_level_remaing
+ * \param rParam                  reference to parameter
+ * \param useLimitedPrefixLength
+ * \param maxLog2TrDynamicRange
+ * \param codedBits               coded bits
+ * \param numBitsLeft             number of coded bits
+ */
+Void xGetRemCoeffValue(UInt& decodedValue, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange, UInt codedBits, Int numCodedBits) {
+  UInt prefix   = 0;
+  UInt codeWord = 0;
+
+  if (useLimitedPrefixLength) {
+    const UInt longestPossiblePrefix = (32 - (COEF_REMAIN_BIN_REDUCTION + maxLog2TrDynamicRange)) + COEF_REMAIN_BIN_REDUCTION;
+
+    do {
+      prefix++;
+      readBits(codedBits, numCodedBits, codeWord, 1);
+    } while (codeWord != 0 && prefix < longestPossiblePrefix);
+  } else {
+    do {
+      prefix++;
+      readBits(codedBits, numCodedBits, codeWord, 1);
+    } while (codeWord);
+  }
+
+  codeWord = 1 - codeWord;
+  prefix -= codeWord;
+  codeWord = 0;
+
+  if (prefix < COEF_REMAIN_BIN_REDUCTION) {
+    readBits(codedBits, numCodedBits, codeWord, riceParam);
+    decodedValue = (prefix << riceParam) + codeWord;
+  } else if (useLimitedPrefixLength) {
+    const UInt maximumPrefixLength = (32 - (COEF_REMAIN_BIN_REDUCTION + maxLog2TrDynamicRange));
+
+    const UInt prefixLength = prefix - COEF_REMAIN_BIN_REDUCTION;
+    const UInt suffixLength = (prefixLength == maximumPrefixLength) ? (maxLog2TrDynamicRange - riceParam) : prefixLength;
+    
+    readBits(codedBits, numCodedBits, codeWord, suffixLength + riceParam);
+
+    decodedValue = codeWord + ((((1 << prefixLength) - 1) + COEF_REMAIN_BIN_REDUCTION) << riceParam);
+  } else {
+    readBits(codedBits, numCodedBits, codeWord, prefix - COEF_REMAIN_BIN_REDUCTION + riceParam);
+    decodedValue = (((1 << (prefix - COEF_REMAIN_BIN_REDUCTION)) + COEF_REMAIN_BIN_REDUCTION - 1) << riceParam) + codeWord;
+  }
 }

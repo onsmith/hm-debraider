@@ -116,6 +116,12 @@ protected:
 
   // Separates and writes equiprobable bins one at a time
   Void xEncodeBinsEpOneAtATime(UInt bins, UInt numBins);
+
+  // Gets the number of full bits available in the budget
+  UInt xGetBudget() const;
+
+  // Adjusts the coded value based on the available budget
+  Void xAdjustCodedValue(UInt& value, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange);
 };
 
 
