@@ -6,25 +6,30 @@
 
 
 
-TDbrCoeffEnc::TDbrCoeffEnc(size_t numLayers) :
-  layers(numLayers) {
-  m_pcBinIf = &xmlBinEncoder;
-}
-
-
 TDbrCoeffEnc::TDbrCoeffEnc() {
   m_pcBinIf = &xmlBinEncoder;
 }
 
 
-size_t TDbrCoeffEnc::numLayers() const {
-  return layers.size();
+
+TDbrCoeffEnc::TDbrCoeffEnc(Int bitsPerCodedRemainingLevel) :
+  bitsPerCodedRemainingLevel(bitsPerCodedRemainingLevel),
+  budget(0) {
 }
 
 
-Void TDbrCoeffEnc::addLayer() {
-  layers.push_back(TDbrLayer());
+
+TDbrCoeffEnc::TDbrCoeffEnc(Int bitsPerCodedRemainingLevel, Int initialBudget) :
+  bitsPerCodedRemainingLevel(bitsPerCodedRemainingLevel),
+  budget(initialBudget) {
 }
+
+
+
+Void TDbrCoeffEnc::setBitsPerCodedRemainingLevel(Int numBits) {
+  bitsPerCodedRemainingLevel = numBits;
+}
+
 
 
 Void TDbrCoeffEnc::setXmlWriter(TDbrXmlWriter* writer) {
@@ -797,48 +802,23 @@ Void TDbrCoeffEnc::resetEntropy(TComSlice* pSlice) {
 
 
 
-UInt TDbrCoeffEnc::xGetBudget() const {
-  UInt budget = 0;
-  for (TDbrLayer layer : layers) {
-    budget += layer.getBudgetInBits();
-  }
-  return budget;
-}
-
-
-
 Void TDbrCoeffEnc::xAdjustCodedValue(UInt& value, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange) {
+  // Allocate bits for this value
+  budget += bitsPerCodedRemainingLevel;
+
+  // Trial-encode the Golomb-Rice code
   UInt codedBits;
   Int numCodedBits;
-
-  // Allocate bits for this coefficient to each layer
-  for (TDbrLayer layer : layers) {
-    layer.addToBudget(1);
-  }
-
-  // Calculate number of bits we have to work with
-  Int availableBits = xGetBudget();
-
-  // Try encoding the Golomb-Rice code
   xGetRemCoeffBits(value, riceParam, useLimitedPrefixLength, maxLog2TrDynamicRange, codedBits, numCodedBits);
 
-  // If the budget was exceeded, zero out all bits past the budget
-  if (numCodedBits > availableBits) {
-    codedBits -= (codedBits & ((0x1 << (numCodedBits - availableBits)) - 1));
+  // If the budget was exceeded, zero out all bits that exceed the budget and recalculate the coded value
+  if (numCodedBits > budget) {
+    codedBits &= ~((0x1 << (numCodedBits - budget)) - 1);
     xGetRemCoeffValue(value, riceParam, useLimitedPrefixLength, maxLog2TrDynamicRange, codedBits, numCodedBits);
   }
 
   // Account for the bits that were actually signaled
-  UInt numBitsToWrite = min(numCodedBits, availableBits);
-  for (TDbrLayer layer : layers) {
-    UInt numBitsCodedInThisLayer = min(layer.getBudgetInBits(), numBitsToWrite);
-    layer.spendBits(numBitsCodedInThisLayer);
-    numBitsToWrite -= numBitsCodedInThisLayer;
-
-    if (numBitsToWrite == 0) {
-      break;
-    }
-  }
+  budget -= min(numCodedBits, budget);
 }
 
 

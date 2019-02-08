@@ -57,8 +57,11 @@ using std::vector;
 
 class TDbrCoeffEnc {
 protected:
-  // Layers
-  vector<TDbrLayer> layers;
+  // Bit budget
+  Int budget;
+
+  // Number of bits to allot for each coded remaining level
+  Int bitsPerCodedRemainingLevel;
 
   // Xml bin encoder
   XmlBinEncoder xmlBinEncoder;
@@ -73,13 +76,11 @@ protected:
 public:
   // Constructors
   TDbrCoeffEnc();
-  TDbrCoeffEnc(size_t numLayers);
+  TDbrCoeffEnc(Int bitsPerCodedRemainingLevel);
+  TDbrCoeffEnc(Int bitsPerCodedRemainingLevel, Int initialBudget);
 
-  // Gets the number of layers in the coder
-  size_t numLayers() const;
-
-  // Adds a layer to the encoder
-  Void addLayer();
+  // Sets the bits allotted for each coded remaining level
+  Void setBitsPerCodedRemainingLevel(Int numBits);
 
   // Codes the coefficients for a given transform block
   Void codeCoeffNxN(TComTU &tu, const ComponentID component);
@@ -116,9 +117,6 @@ protected:
 
   // Separates and writes equiprobable bins one at a time
   Void xEncodeBinsEpOneAtATime(UInt bins, UInt numBins);
-
-  // Gets the number of full bits available in the budget
-  UInt xGetBudget() const;
 
   // Adjusts the coded value based on the available budget
   Void xAdjustCodedValue(UInt& value, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange);
