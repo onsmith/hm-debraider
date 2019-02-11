@@ -54,6 +54,9 @@ class TDbrLayer {
 public:
   static const UInt FIXED_POINT_PRECISION = 5;
 
+  static const UInt toFixedPoint(UInt val);
+  static const UInt toInt(UInt val);
+
 
 protected:
   // CABAC counter
@@ -81,7 +84,8 @@ public:
   UInt getBudget() const;
   UInt getBudgetInBits() const;
   Void spendBits(UInt numBits);
-  Void addToBudget(UInt numBits);
+  Void addBitsToBudget(UInt numBits);
+  Void addFixedPointToBudget(UInt amount);
 };
 
 

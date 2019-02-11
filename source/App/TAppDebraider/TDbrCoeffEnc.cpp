@@ -6,34 +6,57 @@
 
 
 
-TDbrCoeffEnc::TDbrCoeffEnc() {
-  m_pcBinIf = &xmlBinEncoder;
+// Number of bits (as fixed point) to allot for each coded remaining level
+// Currently set to 0.25 bits
+const Int TDbrCoeffEnc::allowancePerCoeffPerLayer = 0x1 << (TDbrLayer::FIXED_POINT_PRECISION - 2);
+
+
+
+// Initial bit budget (as fixed point) for each layer
+const Int TDbrCoeffEnc::initialBudgetPerLayer = TDbrLayer::toFixedPoint(3);
+
+
+
+TDbrCoeffEnc::TDbrCoeffEnc() :
+  layers(1),
+  numLayeredBits(0),
+  m_pcBinIf(&xmlBinEncoder) {
+  for (TDbrLayer& layer : layers) {
+    layer.addFixedPointToBudget(initialBudgetPerLayer);
+  }
 }
 
 
 
-TDbrCoeffEnc::TDbrCoeffEnc(Int bitsPerCodedRemainingLevel) :
-  bitsPerCodedRemainingLevel(bitsPerCodedRemainingLevel),
-  budget(0) {
+TDbrCoeffEnc::TDbrCoeffEnc(Int numLayers) :
+  layers(numLayers),
+  numLayeredBits(0),
+  m_pcBinIf(&xmlBinEncoder) {
+  for (TDbrLayer& layer : layers) {
+    layer.addFixedPointToBudget(initialBudgetPerLayer);
+  }
 }
 
 
 
-TDbrCoeffEnc::TDbrCoeffEnc(Int bitsPerCodedRemainingLevel, Int initialBudget) :
-  bitsPerCodedRemainingLevel(bitsPerCodedRemainingLevel),
-  budget(initialBudget) {
-}
-
-
-
-Void TDbrCoeffEnc::setBitsPerCodedRemainingLevel(Int numBits) {
-  bitsPerCodedRemainingLevel = numBits;
+Void TDbrCoeffEnc::setNumLayers(Int numLayers) {
+  layers.clear();
+  layers.resize(numLayers);
+  for (TDbrLayer& layer : layers) {
+    layer.addFixedPointToBudget(initialBudgetPerLayer);
+  }
 }
 
 
 
 Void TDbrCoeffEnc::setXmlWriter(TDbrXmlWriter* writer) {
   xmlBinEncoder.setXmlWriter(writer);
+}
+
+
+
+Int64 TDbrCoeffEnc::getNumLayeredBits() const {
+  return numLayeredBits;
 }
 
 
@@ -802,27 +825,6 @@ Void TDbrCoeffEnc::resetEntropy(TComSlice* pSlice) {
 
 
 
-Void TDbrCoeffEnc::xAdjustCodedValue(UInt& value, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange) {
-  // Allocate bits for this value
-  budget += bitsPerCodedRemainingLevel;
-
-  // Trial-encode the Golomb-Rice code
-  UInt codedBits;
-  Int numCodedBits;
-  xGetRemCoeffBits(value, riceParam, useLimitedPrefixLength, maxLog2TrDynamicRange, codedBits, numCodedBits);
-
-  // If the budget was exceeded, zero out all bits that exceed the budget and recalculate the coded value
-  if (numCodedBits > budget) {
-    codedBits &= ~((0x1 << (numCodedBits - budget)) - 1);
-    xGetRemCoeffValue(value, riceParam, useLimitedPrefixLength, maxLog2TrDynamicRange, codedBits, numCodedBits);
-  }
-
-  // Account for the bits that were actually signaled
-  budget -= min(numCodedBits, budget);
-}
-
-
-
 static inline Void writeBits(UInt& bits, Int& numCodedBits, UInt bitsToWrite, UInt numBitsToWrite) {
   assert(numCodedBits + numBitsToWrite <= 32);
   bits = (bits << numBitsToWrite) | bitsToWrite;
@@ -963,4 +965,69 @@ Void xGetRemCoeffValue(UInt& decodedValue, UInt riceParam, Bool useLimitedPrefix
     readBits(codedBits, numCodedBits, codeWord, prefix - COEF_REMAIN_BIN_REDUCTION + riceParam);
     decodedValue = (((1 << (prefix - COEF_REMAIN_BIN_REDUCTION)) + COEF_REMAIN_BIN_REDUCTION - 1) << riceParam) + codeWord;
   }
+}
+
+
+
+Void TDbrCoeffEnc::xAllocateBits() {
+  for (TDbrLayer& layer : layers) {
+    layer.addFixedPointToBudget(allowancePerCoeffPerLayer);
+  }
+}
+
+
+
+Void TDbrCoeffEnc::xAdjustCodedValue(UInt& value, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange) {
+  // Allocate bits for this value
+  xAllocateBits();
+
+  // Trial-encode the Golomb-Rice code
+  UInt codedBits;
+  Int numCodedBits;
+  xGetRemCoeffBits(
+    value,
+    riceParam,
+    useLimitedPrefixLength,
+    maxLog2TrDynamicRange,
+    codedBits,
+    numCodedBits
+  );
+
+  // Determine the layer in which each bit ended up
+  Int numActualCodedBits = 0;
+  for (TDbrLayer& layer : layers) {
+    const Int numAvailableBitsInThisLayer = layer.getBudgetInBits();
+
+    // The rest of the bits could be coded in this layer
+    if (numCodedBits <= numActualCodedBits + numAvailableBitsInThisLayer) {
+      layer.spendBits(numCodedBits - numActualCodedBits);
+      numActualCodedBits = numCodedBits;
+      break;
+
+    // Only some of the bits could be coded in this layer
+    } else {
+      layer.spendBits(numAvailableBitsInThisLayer);
+      numActualCodedBits += numAvailableBitsInThisLayer;
+    }
+  }
+
+  // The number of bits that couldn't be coded
+  UInt numUncodedBits = numCodedBits - numActualCodedBits;
+
+  // If not all bits could be coded, zero out all bits that couldn't and
+  //   re-calculate the value represented by the new group of bits
+  if (numUncodedBits > 0) {
+    codedBits &= ~((0x1 << numUncodedBits) - 1);
+    xGetRemCoeffValue(
+      value,
+      riceParam,
+      useLimitedPrefixLength,
+      maxLog2TrDynamicRange,
+      codedBits,
+      numCodedBits
+    );
+  }
+
+  // Account for the bits that were actually signaled
+  numLayeredBits += numActualCodedBits;
 }

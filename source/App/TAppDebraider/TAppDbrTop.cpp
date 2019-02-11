@@ -120,6 +120,7 @@ Void TAppDbrTop::debraid() {
     cabacReader.setXmlWriter(&xmlWriter);
     sbacDecoder.setCabacReader(&cabacReader);
     sbacDecoder.init(&cabacReader);
+    sbacDecoder.setNumLayers(m_numLayers);
     xConfigDecoder();
   }
 
@@ -278,6 +279,9 @@ Void TAppDbrTop::debraid() {
   // Send any remaining pictures to output
   //xFlushDebraidedStreams(outputStream);
   xFlushPictureBuffer(dpb);
+
+  // Output number of layered bits
+  printf("Total number of layered bits: %d\n", (int) m_decoder.getSbacDecoder().getNumLayeredBits());
 
   // Free decoder resources
   m_decoder.deletePicBuffer();

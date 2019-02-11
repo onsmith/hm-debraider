@@ -56,18 +56,26 @@ using std::vector;
 
 
 class TDbrCoeffEnc {
-protected:
-  // Bit budget
-  Int budget;
+public:
+  // Number of bits (as fixed point) to allot for each coded remaining level
+  static const Int allowancePerCoeffPerLayer;
 
-  // Number of bits to allot for each coded remaining level
-  Int bitsPerCodedRemainingLevel;
+  // Initial bit budget (as fixed point) for each layer
+  static const Int initialBudgetPerLayer;
+
+
+protected:
+  // Tracks total number of bits used to code remaining level
+  Int64 numLayeredBits;
+
+  // Layers
+  vector<TDbrLayer> layers;
 
   // Xml bin encoder
   XmlBinEncoder xmlBinEncoder;
 
   // Pointer to xmlBinEncoder
-  TEncBinIf* m_pcBinIf;
+  TEncBinIf* const m_pcBinIf;
 
   // Cabac context
   TDbrCabacContexts context;
@@ -76,11 +84,10 @@ protected:
 public:
   // Constructors
   TDbrCoeffEnc();
-  TDbrCoeffEnc(Int bitsPerCodedRemainingLevel);
-  TDbrCoeffEnc(Int bitsPerCodedRemainingLevel, Int initialBudget);
+  TDbrCoeffEnc(Int numLayers);
 
   // Sets the bits allotted for each coded remaining level
-  Void setBitsPerCodedRemainingLevel(Int numBits);
+  Void setNumLayers(Int numLayers);
 
   // Codes the coefficients for a given transform block
   Void codeCoeffNxN(TComTU &tu, const ComponentID component);
@@ -93,6 +100,9 @@ public:
 
   // Resets the internal entropy
   Void resetEntropy(TComSlice* pSlice);
+
+  // Gets the total number of bits used to code remaining level
+  Int64 getNumLayeredBits() const;
 
 
 protected:
@@ -120,6 +130,10 @@ protected:
 
   // Adjusts the coded value based on the available budget
   Void xAdjustCodedValue(UInt& value, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange);
+
+
+  // Allocates bits to each layer's bit budget
+  Void xAllocateBits();
 };
 
 

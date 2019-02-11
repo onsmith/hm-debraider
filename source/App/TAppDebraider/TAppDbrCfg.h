@@ -70,6 +70,9 @@ protected:
   // Output reconstruction file name
   string m_reconFileName;
 
+  // Number of layers to use when transcoding
+  Int m_numLayers;
+
   // The number of frames before the random access point to skip
   Int m_iSkipFrame;
 

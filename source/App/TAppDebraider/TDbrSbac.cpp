@@ -19,6 +19,15 @@ Void TDbrSbac::setCabacReader(TDbrBinCABAC* cabacReader) {
 }
 
 
+Void TDbrSbac::setNumLayers(Int numLayers) {
+  coefficientEncoder.setNumLayers(numLayers);
+}
+
+Int64 TDbrSbac::getNumLayeredBits() const {
+  return coefficientEncoder.getNumLayeredBits();
+}
+
+
 Void TDbrSbac::parseTerminatingBit(UInt& ruilsLast) {
   assert(xmlWriter != nullptr);
   xmlWriter->writeOpenTag("terminating-bit");

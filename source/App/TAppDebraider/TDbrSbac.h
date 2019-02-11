@@ -83,6 +83,14 @@ public:
   Void setCabacReader(TDbrBinCABAC* cabacReader);
 
 
+  // Number of layers to use when encoding coefficients
+  Void setNumLayers(Int numLayers);
+
+
+  // Number of bits spent in layers
+  Int64 getNumLayeredBits() const;
+
+
   // Override TDecEntropyIf virtual methods to set the output bitstream before
   //   parsing
   //Void parseVPS(TComVPS* pcVPS);

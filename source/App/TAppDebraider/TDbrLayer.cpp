@@ -27,11 +27,25 @@ UInt TDbrLayer::getBudgetInBits() const {
 }
 
 
-Void TDbrLayer::addToBudget(UInt numBits) {
+Void TDbrLayer::addBitsToBudget(UInt numBits) {
   budget += (numBits << FIXED_POINT_PRECISION);
+}
+
+
+Void TDbrLayer::addFixedPointToBudget(UInt amount) {
+  budget += amount;
 }
 
 
 Void TDbrLayer::spendBits(UInt numBits) {
   budget -= (numBits << FIXED_POINT_PRECISION);
+}
+
+const UInt TDbrLayer::toFixedPoint(UInt val) {
+  return (val << FIXED_POINT_PRECISION);
+}
+
+
+const UInt TDbrLayer::toInt(UInt val) {
+  return (val >> FIXED_POINT_PRECISION);
 }
