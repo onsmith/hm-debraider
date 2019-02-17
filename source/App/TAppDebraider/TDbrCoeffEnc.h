@@ -131,9 +131,12 @@ protected:
   // Adjusts the coded value based on the available budget
   Void xAdjustCodedValue(UInt& value, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange);
 
-
   // Allocates bits to each layer's bit budget
   Void xAllocateBits();
+
+  // Layers coefficient data while individually tracking the bit budget, coded
+  //   coefficient flags/levels, and CABAC contexts for each layer
+  Void xLayerCoefficients();
 };
 
 

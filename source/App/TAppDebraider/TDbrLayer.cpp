@@ -2,6 +2,8 @@
 
 
 TDbrLayer::TDbrLayer() :
+  numCodedGt1Flags(0),
+  numCodedGt2Flags(0),
   budget(0) {
   cabacEncoder.init(&bitstream);
 }
@@ -48,4 +50,20 @@ const UInt TDbrLayer::toFixedPoint(UInt val) {
 
 const UInt TDbrLayer::toInt(UInt val) {
   return (val >> FIXED_POINT_PRECISION);
+}
+
+
+Void TDbrLayer::resetContexts(TComSlice& slice) {
+  contexts.resetEntropy(&slice);
+}
+
+
+Void TDbrLayer::resetBudget() {
+  budget = 0;
+}
+
+
+Void TDbrLayer::resetFlagCounts() {
+  numCodedGt1Flags = 0;
+  numCodedGt2Flags = 0;
 }

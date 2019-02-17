@@ -267,6 +267,9 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* coefficients, const Componen
   //   than 1
   UInt gt1Context = 1;
 
+  // Layer the coefficient data
+
+
   // Iterate over the 4x4 coefficient groups
   for (Int cgScanOrderIndex = lscgScanOrderIndex; cgScanOrderIndex >= 0; cgScanOrderIndex--) {
     UInt coeffSigns = 0;
@@ -1030,4 +1033,8 @@ Void TDbrCoeffEnc::xAdjustCodedValue(UInt& value, UInt riceParam, Bool useLimite
 
   // Account for the bits that were actually signaled
   numLayeredBits += numActualCodedBits;
+}
+
+
+Void TDbrCoeffEnc::xLayerCoefficients() {
 }

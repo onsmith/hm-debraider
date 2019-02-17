@@ -71,10 +71,19 @@ protected:
   // Bit budget
   UInt budget;
 
+  // Tracks number of coded flags
+  UInt numCodedGt1Flags;
+  UInt numCodedGt2Flags;
+
 
 public:
   // Constructor
   TDbrLayer();
+
+  // State reset
+  Void resetFlagCounts();
+  Void resetBudget();
+  Void resetContexts(TComSlice& slice);
 
   // Bin encoders
   Void encodeBin(UInt value, ContextModel& context);
