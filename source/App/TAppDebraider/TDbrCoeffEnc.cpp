@@ -475,7 +475,7 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* coefficients, const Componen
         if (absCoeffs[sigCoeffIndex] >= baseLevel) {
           // Adjust coded value
           UInt escapeCodeValue = absCoeffs[sigCoeffIndex] - baseLevel;
-          /*xAdjustCodedValue(
+          /*xLayerExpGolombValue(
             escapeCodeValue,
             golombRiceParam,
             isPrecisionExtended,
@@ -838,7 +838,7 @@ static inline Void readBits(UInt& bits, Int& numBitsLeft, UInt& bitsRead, UInt n
  * \param codedBits               coded bits
  * \param numCodedBits            number of coded bits
  */
-Void xGetRemCoeffBits(UInt ValueToEncode, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange, UInt& codedBits, Int& numCodedBits) {
+Void xExpGolombEncode(UInt ValueToEncode, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange, UInt& codedBits, Int& numCodedBits) {
   Int codeNumber = static_cast<Int>(ValueToEncode);
   codedBits = 0;
   numCodedBits = 0;
@@ -915,7 +915,7 @@ Void xGetRemCoeffBits(UInt ValueToEncode, UInt riceParam, Bool useLimitedPrefixL
  * \param codedBits               coded bits
  * \param numBitsLeft             number of coded bits
  */
-Void xGetRemCoeffValue(UInt& decodedValue, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange, UInt codedBits, Int numCodedBits) {
+Void xExpGolombDecode(UInt& decodedValue, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange, UInt codedBits, Int numCodedBits) {
   UInt prefix   = 0;
   UInt codeWord = 0;
 
@@ -965,11 +965,11 @@ Void TDbrCoeffEnc::xAllocateBits() {
 
 
 
-Void TDbrCoeffEnc::xAdjustCodedValue(UInt& value, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange, Int startingLayer) {
+Void TDbrCoeffEnc::xLayerExpGolombValue(UInt& value, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange, Int startingLayer) {
   // Trial-encode the Golomb-Rice code
   UInt codedBits;
   Int numCodedBits;
-  xGetRemCoeffBits(
+  xExpGolombEncode(
     value,
     riceParam,
     useLimitedPrefixLength,
@@ -978,20 +978,22 @@ Void TDbrCoeffEnc::xAdjustCodedValue(UInt& value, UInt riceParam, Bool useLimite
     numCodedBits
   );
 
-  // Determine the layer in which each bit ended up
+  // Account for the bits in the layer budgets
   Int numActualCodedBits = 0;
   for (int i = startingLayer; i < layers.size(); i++) {
+    // Current layer
     TDbrLayer& layer = layers[i];
 
+    // Number of bits we can fit in this layer
     const Int numAvailableBitsInThisLayer = layer.getBudgetInBits();
 
-    // The rest of the bits could be coded in this layer
+    // If all the remaining bits could be coded in this layer...
     if (numCodedBits <= numActualCodedBits + numAvailableBitsInThisLayer) {
       layer.spendBits(numCodedBits - numActualCodedBits);
       numActualCodedBits = numCodedBits;
       break;
 
-    // Only some of the bits could be coded in this layer
+    // If only some of the bits could be coded in this layer...
     } else {
       layer.spendBits(numAvailableBitsInThisLayer);
       numActualCodedBits += numAvailableBitsInThisLayer;
@@ -1005,7 +1007,7 @@ Void TDbrCoeffEnc::xAdjustCodedValue(UInt& value, UInt riceParam, Bool useLimite
   //   re-calculate the value represented by the new group of bits
   if (numUncodedBits > 0) {
     codedBits &= ~((0x1 << numUncodedBits) - 1);
-    xGetRemCoeffValue(
+    xExpGolombDecode(
       value,
       riceParam,
       useLimitedPrefixLength,
@@ -1074,6 +1076,9 @@ Void TDbrCoeffEnc::xLayerCoefficients(
     layer.transformBlockReset();
   }
 
+  // Golomb-Rice parameter
+  UInt golombRiceParam;
+
   // Iterate over the coefficients in the block
   for (Int coeffScanIndex = 0; coeffScanIndex <= lscScanIndex; coeffScanIndex++) {
     // Coefficient group scan-order index
@@ -1082,8 +1087,9 @@ Void TDbrCoeffEnc::xLayerCoefficients(
     // True if this is the first coefficient in the group
     const Bool isFirstCoeffInGroup = coeffScanIndex & ((0x1 << MLS_CG_SIZE) - 1) == 0;
 
-    // Reset layers for this coefficient group
+    // Reset layers for the coefficient group
     if (isFirstCoeffInGroup) {
+      golombRiceParam = 0;
       for (TDbrLayer& layer : layers) {
         layer.coeffGroupReset();
       }
@@ -1093,13 +1099,13 @@ Void TDbrCoeffEnc::xLayerCoefficients(
     const UInt coeffRasterIndex = codingParameters.scan[coeffScanIndex];
 
     // Absolute value of coefficient
-    const UInt absCoeff = abs(coefficients[coeffRasterIndex]);
+    const UInt absCoeff       = abs(coefficients[coeffRasterIndex]);
     const Bool isSignNegative = (coefficients[coeffRasterIndex] < 0);
 
     // Coefficient flags
-    const UInt isCoeffSigFlag = (absCoeff > 0 ? 1 : 0);
-    const UInt isCoeffGt1Flag = (absCoeff > 1 ? 1 : 0);
-    const UInt isCoeffGt2Flag = (absCoeff > 2 ? 1 : 0);
+    const UInt isCoeffSig = (absCoeff > 0 ? 1 : 0);
+    const UInt isCoeffGt1 = (absCoeff > 1 ? 1 : 0);
+    const UInt isCoeffGt2 = (absCoeff > 2 ? 1 : 0);
 
     // Calculate context offset for significance flag
     const UInt sigFlagContextOffset = getSigFlagContextOffset(
@@ -1120,14 +1126,14 @@ Void TDbrCoeffEnc::xLayerCoefficients(
 
       // Significance flag was signaled in a lower layer, so update context
       if (significanceFlagLayer > -1) {
-        layer.observeSigFlag(isCoeffSigFlag, sigFlagContextOffset);
+        layer.observeSigFlag(isCoeffSig, sigFlagContextOffset);
 
       // Try to signal significance flag in this layer
       } else if (layer.hasBudgetForSigFlag(sigFlagContextOffset)) {
-        numLayeredBits += layer.codeSigFlag(isCoeffSigFlag, sigFlagContextOffset);
+        numLayeredBits += layer.codeSigFlag(isCoeffSig, sigFlagContextOffset);
         significanceFlagLayer = l;
 
-      // Adjust coded flag value if this is the last layer
+      // Adjust coded flag value if it still isn't coded by the last layer
       } else if (isLastLayer) {
         coefficients[coeffRasterIndex] = layer.mps(
           TDbrCabacContexts::SyntaxElement::SigCoeffFlag,
@@ -1140,7 +1146,7 @@ Void TDbrCoeffEnc::xLayerCoefficients(
     }
 
     // If the significance flag wasn't coded, this coefficient can't be finished
-    if (significanceFlagLayer == -1 || !isCoeffSigFlag) {
+    if (significanceFlagLayer == -1 || !isCoeffSig) {
       break;
     }
 
@@ -1165,11 +1171,11 @@ Void TDbrCoeffEnc::xLayerCoefficients(
 
       // Gt1 flag was signaled in a lower layer, so update context
       if (gt1FlagLayer > -1) {
-        layer.observeGt1Flag(isCoeffGt1Flag, gt1FlagContextOffset);
+        layer.observeGt1Flag(isCoeffGt1, gt1FlagContextOffset);
 
       // Try to signal gt1 flag in this layer
       } else if (layer.hasBudgetForGt1Flag(gt1FlagContextOffset)) {
-        numLayeredBits += layer.codeGt1Flag(isCoeffGt1Flag, gt1FlagContextOffset);
+        numLayeredBits += layer.codeGt1Flag(isCoeffGt1, gt1FlagContextOffset);
         gt1FlagLayer = l;
 
       // Adjust coded flag value if this is the last layer
@@ -1185,7 +1191,7 @@ Void TDbrCoeffEnc::xLayerCoefficients(
     }
 
     // If the gt1 flag wasn't coded, this coefficient can't be finished
-    if (gt1FlagLayer == -1 || !isCoeffGt1Flag) {
+    if (gt1FlagLayer == -1 || !isCoeffGt1) {
       break;
     }
 
@@ -1210,11 +1216,11 @@ Void TDbrCoeffEnc::xLayerCoefficients(
 
       // Gt1 flag was signaled in a lower layer, so update context
       if (gt2FlagLayer > -1) {
-        layer.observeGt2Flag(isCoeffGt2Flag, gt2FlagContextOffset);
+        layer.observeGt2Flag(isCoeffGt2, gt2FlagContextOffset);
 
       // Try to signal gt2 flag in this layer
       } else if (layer.hasBudgetForGt2Flag(gt2FlagContextOffset)) {
-        numLayeredBits += layer.codeGt2Flag(isCoeffGt2Flag, gt2FlagContextOffset);
+        numLayeredBits += layer.codeGt2Flag(isCoeffGt2, gt2FlagContextOffset);
         gt2FlagLayer = l;
 
       // Adjust coded flag value if this is the last layer
@@ -1230,7 +1236,7 @@ Void TDbrCoeffEnc::xLayerCoefficients(
     }
 
     // If the gt2 flag wasn't coded, this coefficient can't be finished
-    if (gt2FlagLayer == -1 || !isCoeffGt2Flag) {
+    if (gt2FlagLayer == -1 || !isCoeffGt2) {
       break;
     }
 
@@ -1238,7 +1244,7 @@ Void TDbrCoeffEnc::xLayerCoefficients(
     UInt escapeCodeValue = absCoeff - 3;
 
     // Code the remaining level with Exp-Golomb
-    xAdjustCodedValue(
+    xLayerExpGolombValue(
       escapeCodeValue,
       golombRiceParam,
       isPrecisionExtended,
@@ -1248,23 +1254,7 @@ Void TDbrCoeffEnc::xLayerCoefficients(
 
     // Adjust Golomb-Rice parameter
     if (absCoeff > (3 << golombRiceParam)) {
-      golombRiceParam =
-        isPersistentGolombRiceAdaptionEnabled ?
-        golombRiceParam + 1 :
-        std::min<UInt>(golombRiceParam + 1, 4);
-    }
-
-    // Update Golumb-Rice parameter statistics
-    if (shouldAdaptGolombRiceParam) {
-      const UInt initialGolombRiceParameter = currentGolombRiceStatistic / RExt__GOLOMB_RICE_INCREMENT_DIVISOR;
-
-      if (escapeCodeValue >= (3 << initialGolombRiceParameter)) {
-        currentGolombRiceStatistic++;
-      } else if (2*escapeCodeValue < (1 << initialGolombRiceParameter) && currentGolombRiceStatistic > 0) {
-        currentGolombRiceStatistic--;
-      }
-
-      shouldAdaptGolombRiceParam = false;
+      golombRiceParam = min<UInt>(golombRiceParam + 1, 4);
     }
   }
 }

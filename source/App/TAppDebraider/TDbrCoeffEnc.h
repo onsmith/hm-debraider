@@ -129,7 +129,7 @@ protected:
   Void xEncodeBinsEpOneAtATime(UInt bins, UInt numBins);
 
   // Adjusts the coded value based on the available budget
-  Void xAdjustCodedValue(UInt& value, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange, Int startingLayer=0);
+  Void xLayerExpGolombValue(UInt& value, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange, Int startingLayer=0);
 
   // Allocates bits to each layer's bit budget
   Void xAllocateBits();
