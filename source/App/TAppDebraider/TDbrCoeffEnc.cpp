@@ -268,7 +268,14 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* coefficients, const Componen
   UInt gt1Context = 1;
 
   // Layer the coefficient data
-
+  xLayerCoefficients(
+    tu,                 // Tu structure
+    component,          // Component
+    lscScanOrderIndex,  // Last significant coefficient
+    isGroupSignificant, // Group significant flags
+    codingParameters,   // Scan order object
+    coefficients        // Coefficients
+  );
 
   // Iterate over the 4x4 coefficient groups
   for (Int cgScanOrderIndex = lscgScanOrderIndex; cgScanOrderIndex >= 0; cgScanOrderIndex--) {
@@ -468,15 +475,15 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* coefficients, const Componen
         if (absCoeffs[sigCoeffIndex] >= baseLevel) {
           // Adjust coded value
           UInt escapeCodeValue = absCoeffs[sigCoeffIndex] - baseLevel;
-          xAdjustCodedValue(
+          /*xAdjustCodedValue(
             escapeCodeValue,
             golombRiceParam,
             isPrecisionExtended,
             maxLog2TrDynamicRange
-          );
+          );*/
 
           // Update coefficient level based on adjusted coded value
-          absCoeffs[sigCoeffIndex] = escapeCodeValue + baseLevel;
+          //absCoeffs[sigCoeffIndex] = escapeCodeValue + baseLevel;
 
           // Write Golomb code
           xWriteCoefRemainExGolomb(
@@ -763,9 +770,6 @@ Void TDbrCoeffEnc::xCodeExplicitRdpcmMode(TComTU &tu, const ComponentID componen
 
 
 Void TDbrCoeffEnc::xCodeSigGroupFlag(UInt isGroupSig, UInt contextGroup, ChannelType channelType) {
-  // Layer for coding
-  const Int l = 0;
-
   // Flag value to be coded
   const UInt flag = (isGroupSig ? 1 : 0);
 
@@ -774,24 +778,13 @@ Void TDbrCoeffEnc::xCodeSigGroupFlag(UInt isGroupSig, UInt contextGroup, Channel
     .get(TDbrCabacContexts::SyntaxElement::SigCoeffGroupFlag)
     .get(0, channelType, contextGroup);
 
-  // Code flag in layer
+  // Code flag
   m_pcBinIf->encodeBin(flag, flagContext);
-
-  // Update higher layer contexts
-  /*for (int i = l + 1; i < layers.size(); i++) {
-    layers[i]
-      .m_cCUSigCoeffGroupSCModel
-      .get(0, channelType, contextGroup)
-      .update(flag);
-  }*/
 }
 
 
 
 Void TDbrCoeffEnc::xCodeSigCoeffFlag(UInt isCoeffSig, UInt contextGroup) {
-  // Layer for coding
-  const Int l = 0;
-
   // Flag value to be coded
   const UInt flag = (isCoeffSig ? 1 : 0);
 
@@ -800,16 +793,8 @@ Void TDbrCoeffEnc::xCodeSigCoeffFlag(UInt isCoeffSig, UInt contextGroup) {
     .get(TDbrCabacContexts::SyntaxElement::SigCoeffFlag)
     .get(0, 0, contextGroup);
 
-  // Code flag in layer
+  // Code flag
   m_pcBinIf->encodeBin(flag, flagContext);
-
-  // Update higher layer contexts
-  /*for (int i = l + 1; i < layers.size(); i++) {
-    layers[i]
-      .m_cCUSigSCModel
-      .get(0, 0, contextGroup)
-      .update(flag);
-  }*/
 }
 
 
@@ -980,10 +965,7 @@ Void TDbrCoeffEnc::xAllocateBits() {
 
 
 
-Void TDbrCoeffEnc::xAdjustCodedValue(UInt& value, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange) {
-  // Allocate bits for this value
-  xAllocateBits();
-
+Void TDbrCoeffEnc::xAdjustCodedValue(UInt& value, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange, Int startingLayer) {
   // Trial-encode the Golomb-Rice code
   UInt codedBits;
   Int numCodedBits;
@@ -998,7 +980,9 @@ Void TDbrCoeffEnc::xAdjustCodedValue(UInt& value, UInt riceParam, Bool useLimite
 
   // Determine the layer in which each bit ended up
   Int numActualCodedBits = 0;
-  for (TDbrLayer& layer : layers) {
+  for (int i = startingLayer; i < layers.size(); i++) {
+    TDbrLayer& layer = layers[i];
+
     const Int numAvailableBitsInThisLayer = layer.getBudgetInBits();
 
     // The rest of the bits could be coded in this layer
@@ -1032,9 +1016,255 @@ Void TDbrCoeffEnc::xAdjustCodedValue(UInt& value, UInt riceParam, Bool useLimite
   }
 
   // Account for the bits that were actually signaled
-  numLayeredBits += numActualCodedBits;
+  numLayeredBits += TDbrLayer::toFixedPoint(numActualCodedBits);
 }
 
 
-Void TDbrCoeffEnc::xLayerCoefficients() {
+
+static UInt getSigFlagContextOffset(
+  const TComTU& tu,
+  ComponentID component,
+  const UInt* isGroupSignificant,
+  const TUEntropyCodingParameters& codingParameters,
+  UInt coeffScanOrderIndex
+) {
+  const Int cgScanOrderIndex = coeffScanOrderIndex >> MLS_CG_SIZE;
+  const Int cgRasterOrderIndex = codingParameters.scanCG[cgScanOrderIndex];
+  const Int cgYPos = cgRasterOrderIndex / codingParameters.widthInGroups;
+  const Int cgXPos = cgRasterOrderIndex - (cgYPos * codingParameters.widthInGroups);
+
+  const Int sigCoeffContext = TComTrQuant::calcPatternSigCtx(
+    isGroupSignificant,
+    cgXPos,
+    cgYPos,
+    codingParameters.widthInGroups,
+    codingParameters.heightInGroups
+  );
+
+  const TComRectangle& tuRect       = tu.getRect(component);
+  const UInt           tuWidth      = tuRect.width;
+  const UInt           tuHeight     = tuRect.height;
+  const UInt           tuWidthLog2  = g_aucConvertToBit[tuWidth]  + 2;
+  const UInt           tuHeightLog2 = g_aucConvertToBit[tuHeight] + 2;
+
+  const UInt contextOffset = TComTrQuant::getSigCtxInc(
+    sigCoeffContext,
+    codingParameters,
+    coeffScanOrderIndex,
+    tuWidthLog2,
+    tuHeightLog2,
+    toChannelType(component)
+  );
+
+  return contextOffset + getSignificanceMapContextOffset(component);
+}
+
+
+
+Void TDbrCoeffEnc::xLayerCoefficients(
+  const TComTU& tu,
+  ComponentID component,
+  Int lscScanIndex,
+  const UInt* isGroupSignificant,
+  const TUEntropyCodingParameters& codingParameters,
+  TCoeff* coefficients
+) {
+  // Reset layers for the transform block
+  for (TDbrLayer& layer : layers) {
+    layer.transformBlockReset();
+  }
+
+  // Iterate over the coefficients in the block
+  for (Int coeffScanIndex = 0; coeffScanIndex <= lscScanIndex; coeffScanIndex++) {
+    // Coefficient group scan-order index
+    const Int cgScanIndex = (coeffScanIndex >> MLS_CG_SIZE);
+
+    // True if this is the first coefficient in the group
+    const Bool isFirstCoeffInGroup = coeffScanIndex & ((0x1 << MLS_CG_SIZE) - 1) == 0;
+
+    // Reset layers for this coefficient group
+    if (isFirstCoeffInGroup) {
+      for (TDbrLayer& layer : layers) {
+        layer.coeffGroupReset();
+      }
+    }
+
+    // Coefficient raster-order index
+    const UInt coeffRasterIndex = codingParameters.scan[coeffScanIndex];
+
+    // Absolute value of coefficient
+    const UInt absCoeff = abs(coefficients[coeffRasterIndex]);
+    const Bool isSignNegative = (coefficients[coeffRasterIndex] < 0);
+
+    // Coefficient flags
+    const UInt isCoeffSigFlag = (absCoeff > 0 ? 1 : 0);
+    const UInt isCoeffGt1Flag = (absCoeff > 1 ? 1 : 0);
+    const UInt isCoeffGt2Flag = (absCoeff > 2 ? 1 : 0);
+
+    // Calculate context offset for significance flag
+    const UInt sigFlagContextOffset = getSigFlagContextOffset(
+      tu,
+      component,
+      isGroupSignificant,
+      codingParameters,
+      coeffScanIndex
+    );
+
+    // Layer in which the significance flag is coded
+    Int significanceFlagLayer = -1;
+
+    // Code significance flag
+    for (int l = 0; l < layers.size(); l++) {
+      TDbrLayer& layer = layers[l];
+      const Bool isLastLayer = (l + 1 == layers.size());
+
+      // Significance flag was signaled in a lower layer, so update context
+      if (significanceFlagLayer > -1) {
+        layer.observeSigFlag(isCoeffSigFlag, sigFlagContextOffset);
+
+      // Try to signal significance flag in this layer
+      } else if (layer.hasBudgetForSigFlag(sigFlagContextOffset)) {
+        numLayeredBits += layer.codeSigFlag(isCoeffSigFlag, sigFlagContextOffset);
+        significanceFlagLayer = l;
+
+      // Adjust coded flag value if this is the last layer
+      } else if (isLastLayer) {
+        coefficients[coeffRasterIndex] = layer.mps(
+          TDbrCabacContexts::SyntaxElement::SigCoeffFlag,
+          sigFlagContextOffset
+        );
+        if (isSignNegative) {
+          coefficients[coeffRasterIndex] = -coefficients[coeffRasterIndex];
+        }
+      }
+    }
+
+    // If the significance flag wasn't coded, this coefficient can't be finished
+    if (significanceFlagLayer == -1 || !isCoeffSigFlag) {
+      break;
+    }
+
+    // Layer in which the gt1 flag is coded
+    Int gt1FlagLayer = -1;
+
+    // Code gt1 flag
+    for (int l = significanceFlagLayer; l < layers.size(); l++) {
+      TDbrLayer& layer = layers[l];
+      const Bool isLastLayer = (l + 1 == layers.size());
+
+      // Calculate context group for gt1 flag
+      const UInt flagContextGroup = getContextSetIndex(
+        component,
+        cgScanIndex,
+        layer.didLastCoeffGroupHaveAGt1Flag()
+      );
+
+      // Calculate context offset for gt1 flag
+      const UInt gt1FlagContextOffset = layer.getFlagContextState() +
+        flagContextGroup * NUM_ONE_FLAG_CTX_PER_SET;
+
+      // Gt1 flag was signaled in a lower layer, so update context
+      if (gt1FlagLayer > -1) {
+        layer.observeGt1Flag(isCoeffGt1Flag, gt1FlagContextOffset);
+
+      // Try to signal gt1 flag in this layer
+      } else if (layer.hasBudgetForGt1Flag(gt1FlagContextOffset)) {
+        numLayeredBits += layer.codeGt1Flag(isCoeffGt1Flag, gt1FlagContextOffset);
+        gt1FlagLayer = l;
+
+      // Adjust coded flag value if this is the last layer
+      } else if (isLastLayer) {
+        coefficients[coeffRasterIndex] = 1 + layer.mps(
+          TDbrCabacContexts::SyntaxElement::CoeffGt1Flag,
+          gt1FlagContextOffset
+        );
+        if (isSignNegative) {
+          coefficients[coeffRasterIndex] = -coefficients[coeffRasterIndex];
+        }
+      }
+    }
+
+    // If the gt1 flag wasn't coded, this coefficient can't be finished
+    if (gt1FlagLayer == -1 || !isCoeffGt1Flag) {
+      break;
+    }
+
+    // Layer in which the gt2 flag is coded
+    Int gt2FlagLayer = -1;
+
+    // Code gt2 flag
+    for (int l = gt1FlagLayer; l < layers.size(); l++) {
+      TDbrLayer& layer = layers[l];
+      const Bool isLastLayer = (l + 1 == layers.size());
+
+      // Calculate context group for gt2 flag
+      const UInt flagContextGroup = getContextSetIndex(
+        component,
+        cgScanIndex,
+        layer.didLastCoeffGroupHaveAGt1Flag()
+      );
+
+      // Calculate context offset for gt2 flag
+      const UInt gt2FlagContextOffset =
+        flagContextGroup * NUM_ABS_FLAG_CTX_PER_SET;
+
+      // Gt1 flag was signaled in a lower layer, so update context
+      if (gt2FlagLayer > -1) {
+        layer.observeGt2Flag(isCoeffGt2Flag, gt2FlagContextOffset);
+
+      // Try to signal gt2 flag in this layer
+      } else if (layer.hasBudgetForGt2Flag(gt2FlagContextOffset)) {
+        numLayeredBits += layer.codeGt2Flag(isCoeffGt2Flag, gt2FlagContextOffset);
+        gt2FlagLayer = l;
+
+      // Adjust coded flag value if this is the last layer
+      } else if (isLastLayer) {
+        coefficients[coeffRasterIndex] = 2 + layer.mps(
+          TDbrCabacContexts::SyntaxElement::CoeffGt2Flag,
+          gt2FlagContextOffset
+        );
+        if (isSignNegative) {
+          coefficients[coeffRasterIndex] = -coefficients[coeffRasterIndex];
+        }
+      }
+    }
+
+    // If the gt2 flag wasn't coded, this coefficient can't be finished
+    if (gt2FlagLayer == -1 || !isCoeffGt2Flag) {
+      break;
+    }
+
+    // Remaining coefficient level
+    UInt escapeCodeValue = absCoeff - 3;
+
+    // Code the remaining level with Exp-Golomb
+    xAdjustCodedValue(
+      escapeCodeValue,
+      golombRiceParam,
+      isPrecisionExtended,
+      maxLog2TrDynamicRange,
+      gt2FlagLayer
+    );
+
+    // Adjust Golomb-Rice parameter
+    if (absCoeff > (3 << golombRiceParam)) {
+      golombRiceParam =
+        isPersistentGolombRiceAdaptionEnabled ?
+        golombRiceParam + 1 :
+        std::min<UInt>(golombRiceParam + 1, 4);
+    }
+
+    // Update Golumb-Rice parameter statistics
+    if (shouldAdaptGolombRiceParam) {
+      const UInt initialGolombRiceParameter = currentGolombRiceStatistic / RExt__GOLOMB_RICE_INCREMENT_DIVISOR;
+
+      if (escapeCodeValue >= (3 << initialGolombRiceParameter)) {
+        currentGolombRiceStatistic++;
+      } else if (2*escapeCodeValue < (1 << initialGolombRiceParameter) && currentGolombRiceStatistic > 0) {
+        currentGolombRiceStatistic--;
+      }
+
+      shouldAdaptGolombRiceParam = false;
+    }
+  }
 }

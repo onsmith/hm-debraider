@@ -52,7 +52,7 @@
 
 class TDbrLayer {
 public:
-  static const UInt FIXED_POINT_PRECISION = 5;
+  static const UInt FIXED_POINT_PRECISION = 15;
 
   static const UInt toFixedPoint(UInt val);
   static const UInt toInt(UInt val);
@@ -60,20 +60,25 @@ public:
 
 protected:
   // CABAC counter
-  TEncBinCABACCounter cabacEncoder;
+  //TEncBinCABACCounter cabacEncoder;
 
   // Fake output bitstream
-  TComOutputBitstream bitstream;
+  //TComOutputBitstream bitstream;
 
   // Contexts
   TDbrCabacContexts contexts;
 
   // Bit budget
-  UInt budget;
+  UInt64 budget;
 
   // Tracks number of coded flags
+  UInt numCodedSigFlags;
   UInt numCodedGt1Flags;
   UInt numCodedGt2Flags;
+
+  // Tracks context state for coefficient level flags
+  UInt lastFlagContextState;
+  UInt flagContextState;
 
 
 public:
@@ -81,13 +86,15 @@ public:
   TDbrLayer();
 
   // State reset
-  Void resetFlagCounts();
   Void resetBudget();
   Void resetContexts(TComSlice& slice);
+  Void resetCoeffGroupFlagCounts();
+  Void resetFlagContextState();
 
-  // Bin encoders
-  Void encodeBin(UInt value, ContextModel& context);
-  Void encodeBinEP(UInt value);
+  // High-level state resets
+  Void nalReset(TComSlice& slice);
+  Void transformBlockReset();
+  Void coeffGroupReset();
 
   // Bit budget management
   UInt getBudget() const;
@@ -95,6 +102,49 @@ public:
   Void spendBits(UInt numBits);
   Void addBitsToBudget(UInt numBits);
   Void addFixedPointToBudget(UInt amount);
+
+  // Check if there's room for another flag
+  Bool hasRoomForGt1Flag() const;
+  Bool hasRoomForGt2Flag() const;
+
+  // Gets the current flag context group index
+  UInt getFlagContextState() const;
+  Bool didLastCoeffGroupHaveAGt1Flag() const;
+
+  // Flag coding decision
+  Bool hasBudgetForFlag(TDbrCabacContexts::SyntaxElement flagType, UInt contextIndex);
+  Bool hasBudgetForSigFlag(UInt contextIndex);
+  Bool hasBudgetForGt1Flag(UInt contextIndex);
+  Bool hasBudgetForGt2Flag(UInt contextIndex);
+
+  // Flag coding
+  UInt codeFlag(TDbrCabacContexts::SyntaxElement flagType, UInt flag, UInt contextIndex);
+  UInt codeSigFlag(UInt flag, UInt contextIndex);
+  UInt codeGt1Flag(UInt flag, UInt contextIndex);
+  UInt codeGt2Flag(UInt flag, UInt contextIndex);
+
+  // Flag accounting
+  Void observeFlag(TDbrCabacContexts::SyntaxElement flagType, UInt flag, UInt contextIndex);
+  Void observeSigFlag(UInt flag, UInt contextIndex);
+  Void observeGt1Flag(UInt flag, UInt contextIndex);
+  Void observeGt2Flag(UInt flag, UInt contextIndex);
+
+  // Gets the most probable symbol for a given flag/context
+  UInt mps(TDbrCabacContexts::SyntaxElement flagType, UInt contextIndex);
+
+  // Calculates the bit cost of coding a given flag
+  UInt bitCost(TDbrCabacContexts::SyntaxElement flagType, UInt flag, UInt contextIndex);
+
+  // Calculates the bit cost of coding a given flag using a given context
+  static UInt bitCost(ContextModel& context, UInt flag);
+
+  // Calculates the bit cost associated with encoding the least probable symbol
+  //   of a given context
+  static UInt maxBitCost(ContextModel& context);
+
+  // Calculates the bit cost associated with encoding the most probable symbol
+  //   of a given context
+  static UInt minBitCost(ContextModel& context);
 };
 
 
