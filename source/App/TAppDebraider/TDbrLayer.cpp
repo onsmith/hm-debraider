@@ -13,13 +13,13 @@ TDbrLayer::TDbrLayer() :
 }
 
 
-UInt TDbrLayer::getBudget() const {
+UInt64 TDbrLayer::getBudget() const {
   return budget;
 }
 
 
 UInt TDbrLayer::getBudgetInBits() const {
-  return (budget >> FIXED_POINT_PRECISION);
+  return static_cast<UInt>(budget >> FIXED_POINT_PRECISION);
 }
 
 
@@ -243,7 +243,7 @@ UInt TDbrLayer::getGolombRiceParam() const {
 }
 
 
-UInt TDbrLayer::updateGolombRiceParam(UInt absCoeff) {
+Void TDbrLayer::updateGolombRiceParam(UInt absCoeff) {
   if (absCoeff > (3 << golombRiceParam)) {
     golombRiceParam = std::min<UInt>(golombRiceParam + 1, 4);
   }

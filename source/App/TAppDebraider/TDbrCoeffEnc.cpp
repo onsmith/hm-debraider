@@ -7,8 +7,11 @@
 
 
 // Number of bits (as fixed point) to allot for each coded remaining level
+// Currently set to 0.5 bits
+const Int TDbrCoeffEnc::allowancePerCoeffPerLayer = 0x1 << (TDbrLayer::FIXED_POINT_PRECISION - 1);
+
 // Currently set to 0.25 bits
-const Int TDbrCoeffEnc::allowancePerCoeffPerLayer = 0x1 << (TDbrLayer::FIXED_POINT_PRECISION - 2);
+//const Int TDbrCoeffEnc::allowancePerCoeffPerLayer = 0x1 << (TDbrLayer::FIXED_POINT_PRECISION - 2);
 
 
 
@@ -258,7 +261,7 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* coefficients, const Componen
 
 
   // Layer the coefficient data
-  xLayerCoefficients(
+  xLayerCoefficientData(
     tu,                 // Tu structure
     component,          // Block component (Y, U, or V)
     lscScanOrderIndex,  // Index of last significant coefficient in block
@@ -814,6 +817,16 @@ Void TDbrCoeffEnc::resetEntropy(TComSlice* pSlice) {
 
 
 
+/**
+ * Local function which "writes" bits to an integer by bit-shifting them in.
+ * \param bits            An integer, perhaps already containing some "written"
+ *                        bits, which will be updated by this method.
+ * \param numCodedBits    Number of bits written to the bits param. Will be
+ *                        updated by this method.
+ * \param bitsToWrite     The bits to write to the bits param.
+ * \param numBitsToWrite  The number of bits that should be written to the bits
+ *                        param.
+ */
 static inline Void writeBits(UInt& bits, Int& numCodedBits, UInt bitsToWrite, UInt numBitsToWrite) {
   assert(numCodedBits + numBitsToWrite <= 32);
   bits = (bits << numBitsToWrite) | bitsToWrite;
@@ -822,6 +835,18 @@ static inline Void writeBits(UInt& bits, Int& numCodedBits, UInt bitsToWrite, UI
 
 
 
+/**
+ * Local function which "reads" bits from an integer and bit-shifts them out.
+ * \param bits            An integer containing bits, some of which will be
+ *                        "read" by this method. "Read" bits will be shifted
+ *                        out by this method.
+ * \param numBitsLeft     Number of readable bits left in the bits param. Will
+ *                        be decreased by this method as bits are read.
+ * \param bitsRead        Will be set to the value of the bits read by this
+ *                        method.
+ * \param numBitsToRead   The number of bits that should be read from the bits
+ *                        param.
+ */
 static inline Void readBits(UInt& bits, Int& numBitsLeft, UInt& bitsRead, UInt numBitsToRead) {
   assert(numBitsLeft >= numBitsToRead);
   bitsRead = (bits >> (numBitsLeft - numBitsToRead)) & ((0x1 << numBitsToRead) - 1);
@@ -966,7 +991,7 @@ Void TDbrCoeffEnc::xAllocateBits() {
 
 
 
-Void TDbrCoeffEnc::xLayerExpGolombValue(UInt& value, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange, Int startingLayer) {
+Void TDbrCoeffEnc::xLayerExpGolombValue(UInt& value, UInt absCoeff, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange, Int startingLayer) {
   // Trial-encode the Golomb-Rice code
   UInt codedBits;
   Int numCodedBits;
@@ -1021,21 +1046,31 @@ Void TDbrCoeffEnc::xLayerExpGolombValue(UInt& value, UInt riceParam, Bool useLim
       numCodedBits
     );
 
-  // If all bits were coded, update Golomb-Rice parameter
-  // NOTE: This assumes sig_flag, gt1_flag, and gt2_flag were ALL coded and
-  //       were ALL true
+  // If all bits were coded, update Golomb-Rice parameter in upper layers
   } else {
     for (int i = completeValueLayer; i < layers.size(); i++) {
-      layers[i].updateGolombRiceParam(value + 3);
+      layers[i].updateGolombRiceParam(absCoeff);
     }
   }
 
-  // Account for the bits that were actually signaled
+  // Track total count of all signaled bits
   numLayeredBits += TDbrLayer::toFixedPoint(numActualCodedBits);
 }
 
 
 
+/**
+ * Local function to determine the context offset for coding a significance
+ *   flag
+ *
+ * \param tu                   The tu containing the coefficient significance
+ *                             flag to be coded
+ * \param component            The component of the coefficient significance
+ *                             flag to be coded
+ * \param isGroupSignificant   Array of group significance flags for the block
+ * \param codingParameters     Coefficient scan order object
+ * \param coeffScanOrderIndex  Scan order index of the coefficient to be coded
+ */
 static UInt getSigFlagContextOffset(
   const TComTU& tu,
   ComponentID component,
@@ -1048,7 +1083,7 @@ static UInt getSigFlagContextOffset(
   const Int cgYPos = cgRasterOrderIndex / codingParameters.widthInGroups;
   const Int cgXPos = cgRasterOrderIndex - (cgYPos * codingParameters.widthInGroups);
 
-  const Int sigCoeffContext = TComTrQuant::calcPatternSigCtx(
+  const Int neighboringCgPattern = TComTrQuant::calcPatternSigCtx(
     isGroupSignificant,
     cgXPos,
     cgYPos,
@@ -1063,7 +1098,7 @@ static UInt getSigFlagContextOffset(
   const UInt           tuHeightLog2 = g_aucConvertToBit[tuHeight] + 2;
 
   const UInt contextOffset = TComTrQuant::getSigCtxInc(
-    sigCoeffContext,
+    neighboringCgPattern,
     codingParameters,
     coeffScanOrderIndex,
     tuWidthLog2,
@@ -1076,7 +1111,7 @@ static UInt getSigFlagContextOffset(
 
 
 
-Void TDbrCoeffEnc::xLayerCoefficients(
+Void TDbrCoeffEnc::xLayerCoefficientData(
   const TComTU& tu,
   ComponentID component,
   Int lscScanIndex,
@@ -1084,181 +1119,251 @@ Void TDbrCoeffEnc::xLayerCoefficients(
   const TUEntropyCodingParameters& codingParameters,
   TCoeff* coefficients
 ) {
-  // Reset layers for the transform block
+  // Get coding info from sps
+  const TComSPS& sps =
+    *tu.getCU()->getSlice()->getSPS();
+  const Bool isPrecisionExtended =
+    sps.getSpsRangeExtension().getExtendedPrecisionProcessingFlag();
+  const Int maxLog2TrDynamicRange =
+    sps.getMaxLog2TrDynamicRange(toChannelType(component));
+
+  // Reset layers for the current transform block
   for (TDbrLayer& layer : layers) {
     layer.transformBlockReset();
   }
 
-  // Iterate over the coefficients in the block
-  for (Int coeffScanIndex = 0; coeffScanIndex <= lscScanIndex; coeffScanIndex++) {
-    // Coefficient group scan-order index
-    const Int cgScanIndex = (coeffScanIndex >> MLS_CG_SIZE);
+  // The index of the group containing the last significant coefficient
+  const Int lscgScanIndex = lscScanIndex >> MLS_CG_SIZE;
 
-    // True if this is the first coefficient in the group
-    const Bool isFirstCoeffInGroup = coeffScanIndex & ((0x1 << MLS_CG_SIZE) - 1) == 0;
+  // Iterate over coefficient groups
+  for (int cgScanIndex = 0; cgScanIndex <= lscgScanIndex; cgScanIndex++) {
+    // Calculate the (x, y) location of the current coefficient group
+    const Int cgRasterIndex = codingParameters.scanCG[cgScanIndex];
 
-    // Reset layers for the coefficient group
-    if (isFirstCoeffInGroup) {
-      for (TDbrLayer& layer : layers) {
-        layer.coeffGroupReset();
-      }
+    // Skip non-significant coefficient groups
+    if (!isGroupSignificant[cgRasterIndex]) {
+      continue;
     }
 
-    // Coefficient raster-order index
-    const UInt coeffRasterIndex = codingParameters.scan[coeffScanIndex];
+    // Reset layer data for this coefficient group
+    for (TDbrLayer& layer : layers) {
+      layer.coeffGroupReset();
+    }
 
-    // Absolute value of coefficient
-    const UInt absCoeff       = abs(coefficients[coeffRasterIndex]);
-    const Bool isSignNegative = (coefficients[coeffRasterIndex] < 0);
+    // Number of significant coefficients seen so far in the current group
+    UInt numSigCoeffsSeenSoFar = 0;
 
-    // Coefficient flags
-    const UInt isCoeffSig = (absCoeff > 0 ? 1 : 0);
-    const UInt isCoeffGt1 = (absCoeff > 1 ? 1 : 0);
-    const UInt isCoeffGt2 = (absCoeff > 2 ? 1 : 0);
+    // Indices of first and last coefficient in the group
+    const Int firstCoeffInGroupScanIndex = (cgScanIndex << MLS_CG_SIZE);
+    const Int lastCoeffInGroupScanIndex  = ((cgScanIndex + 1) << MLS_CG_SIZE) - 1;
 
-    // Calculate context offset for significance flag
-    const UInt sigFlagContextOffset = getSigFlagContextOffset(
-      tu,
-      component,
-      isGroupSignificant,
-      codingParameters,
-      coeffScanIndex
-    );
+    // Index of last coded coefficient in the group
+    const Int lastCodedCoeffInGroupScanIndex = min<Int>(lastCoeffInGroupScanIndex, lscScanIndex);
 
-    // Layer in which the significance flag is coded
-    Int significanceFlagLayer = -1;
+    // Iterate over each coefficient in the group
+    for (int coeffScanIndex = firstCoeffInGroupScanIndex; coeffScanIndex <= lastCodedCoeffInGroupScanIndex; coeffScanIndex++) {
+      // Give budget for this coefficient
+      xAllocateBits();
 
-    // Code significance flag
-    for (int l = 0; l < layers.size(); l++) {
-      TDbrLayer& layer = layers[l];
-      const Bool isLastLayer = (l + 1 == layers.size());
+      // Coefficient raster-order index
+      const UInt coeffRasterIndex = codingParameters.scan[coeffScanIndex];
 
-      // Significance flag was signaled in a lower layer, so update context
-      if (significanceFlagLayer > -1) {
-        layer.observeSigFlag(isCoeffSig, sigFlagContextOffset);
+      // Absolute value and sign of coefficient
+      const UInt absCoeff       = abs(coefficients[coeffRasterIndex]);
+      const Bool isSignNegative = (coefficients[coeffRasterIndex] < 0);
 
-      // Try to signal significance flag in this layer
-      } else if (layer.hasBudgetForSigFlag(sigFlagContextOffset)) {
-        numLayeredBits += layer.codeSigFlag(isCoeffSig, sigFlagContextOffset);
-        significanceFlagLayer = l;
+      // Coefficient flags
+      const UInt isCoeffSig = (absCoeff > 0 ? 1 : 0);
+      const UInt isCoeffGt1 = (absCoeff > 1 ? 1 : 0);
+      const UInt isCoeffGt2 = (absCoeff > 2 ? 1 : 0);
 
-      // Adjust coded flag value if it still isn't coded by the last layer
-      } else if (isLastLayer) {
-        coefficients[coeffRasterIndex] = layer.mps(
-          TDbrCabacContexts::SyntaxElement::SigCoeffFlag,
-          sigFlagContextOffset
+      // Layer in which the significance flag is coded
+      Int significanceFlagLayer = -1;
+
+      // Layer in which the gt1 flag is coded
+      Int gt1FlagLayer = -1;
+
+      // Layer in which the gt2 flag is coded
+      Int gt2FlagLayer = -1;
+
+      // Code the significance flag
+      {
+        // True if this is the DC coefficient
+        const Bool isDCCoeff = coeffScanIndex == 0;
+
+        // True if this is the last and only significant coefficient in the group
+        const Bool isLastAndOnlySigCoeffInGroup = (
+          coeffScanIndex == lastCodedCoeffInGroupScanIndex &&
+          numSigCoeffsSeenSoFar == 0
         );
-        if (isSignNegative) {
-          coefficients[coeffRasterIndex] = -coefficients[coeffRasterIndex];
+
+        // True if this is the last significant coefficient in the block
+        const Bool isLastSigCoeff = coeffScanIndex == lscScanIndex;
+
+        // True if this significance flag value is implicitly coded
+        const Bool isSigFlagImplicitlyCoded = (
+          isDCCoeff == 0 ||
+          isLastAndOnlySigCoeffInGroup ||
+          isLastSigCoeff
+        );
+
+        // Implicitly signal significance flag
+        if (isSigFlagImplicitlyCoded) {
+          significanceFlagLayer = 0;
+        }
+
+        // Calculate context offset for significance flag
+        const UInt sigFlagContextOffset = getSigFlagContextOffset(
+          tu,
+          component,
+          isGroupSignificant,
+          codingParameters,
+          coeffScanIndex
+        );
+
+        // Layer significance flag
+        for (int l = 0; l < layers.size(); l++) {
+          // The current layer
+          TDbrLayer& layer = layers[l];
+
+          // True if this is the last layer
+          const Bool isLastLayer = (l + 1 == layers.size());
+
+          // Significance flag was signaled in a lower layer, so update context
+          if (significanceFlagLayer > -1) {
+            layer.observeSigFlag(isCoeffSig, sigFlagContextOffset);
+
+          // Try to signal significance flag in this layer
+          } else if (layer.hasBudgetForSigFlag(sigFlagContextOffset)) {
+            numLayeredBits += layer.codeSigFlag(isCoeffSig, sigFlagContextOffset);
+            significanceFlagLayer = l;
+
+          // Adjust coded value if the significance flag couldn't be coded
+          } else if (isLastLayer) {
+            coefficients[coeffRasterIndex] = layer.mps(
+              SyntaxElement::SigCoeffFlag,
+              sigFlagContextOffset
+            );
+            if (isSignNegative) {
+              coefficients[coeffRasterIndex] = -coefficients[coeffRasterIndex];
+            }
+          }
+        }
+
+        // Finished with this coefficient if its significant flag is false or
+        //   if it couldn't be coded
+        if (significanceFlagLayer == -1 || !isCoeffSig) {
+          break;
         }
       }
-    }
 
-    // If the significance flag wasn't coded, this coefficient can't be finished
-    if (significanceFlagLayer == -1 || !isCoeffSig) {
-      break;
-    }
+      // Code the gt1 flag
+      {
+        for (int l = significanceFlagLayer; l < layers.size(); l++) {
+          // The current layer
+          TDbrLayer& layer = layers[l];
 
-    // Layer in which the gt1 flag is coded
-    Int gt1FlagLayer = -1;
+          // True if this is the last layer
+          const Bool isLastLayer = (l + 1 == layers.size());
 
-    // Code gt1 flag
-    for (int l = significanceFlagLayer; l < layers.size(); l++) {
-      TDbrLayer& layer = layers[l];
-      const Bool isLastLayer = (l + 1 == layers.size());
+          // Calculate context group for gt1 flag
+          const UInt gt1FlagContextGroup = getContextSetIndex(
+            component,
+            cgScanIndex,
+            layer.didLastCoeffGroupHaveAGt1Flag()
+          );
 
-      // Calculate context group for gt1 flag
-      const UInt flagContextGroup = getContextSetIndex(
-        component,
-        cgScanIndex,
-        layer.didLastCoeffGroupHaveAGt1Flag()
-      );
+          // Calculate context offset for gt1 flag
+          const UInt gt1FlagContextOffset = layer.getFlagContextState() +
+            gt1FlagContextGroup * NUM_ONE_FLAG_CTX_PER_SET;
 
-      // Calculate context offset for gt1 flag
-      const UInt gt1FlagContextOffset = layer.getFlagContextState() +
-        flagContextGroup * NUM_ONE_FLAG_CTX_PER_SET;
+          // Gt1 flag was signaled in a lower layer, so update context
+          if (gt1FlagLayer > -1) {
+            layer.observeGt1Flag(isCoeffGt1, gt1FlagContextOffset);
 
-      // Gt1 flag was signaled in a lower layer, so update context
-      if (gt1FlagLayer > -1) {
-        layer.observeGt1Flag(isCoeffGt1, gt1FlagContextOffset);
+          // Try to signal gt1 flag in this layer
+          } else if (layer.hasBudgetForGt1Flag(gt1FlagContextOffset)) {
+            numLayeredBits += layer.codeGt1Flag(isCoeffGt1, gt1FlagContextOffset);
+            gt1FlagLayer = l;
 
-      // Try to signal gt1 flag in this layer
-      } else if (layer.hasBudgetForGt1Flag(gt1FlagContextOffset)) {
-        numLayeredBits += layer.codeGt1Flag(isCoeffGt1, gt1FlagContextOffset);
-        gt1FlagLayer = l;
-
-      // Adjust coded flag value if this is the last layer
-      } else if (isLastLayer) {
-        coefficients[coeffRasterIndex] = 1 + layer.mps(
-          TDbrCabacContexts::SyntaxElement::CoeffGt1Flag,
-          gt1FlagContextOffset
-        );
-        if (isSignNegative) {
-          coefficients[coeffRasterIndex] = -coefficients[coeffRasterIndex];
+          // Adjust coded value if the gt1 flag couldn't be coded
+          } else if (isLastLayer) {
+            coefficients[coeffRasterIndex] = 1 + layer.mps(
+              SyntaxElement::CoeffGt1Flag,
+              gt1FlagContextOffset
+            );
+            if (isSignNegative) {
+              coefficients[coeffRasterIndex] = -coefficients[coeffRasterIndex];
+            }
+          }
+        }
+        
+        // Finished with this coefficient if its gt1 flag is false or if it
+        //   couldn't be coded
+        if (gt1FlagLayer == -1 || !isCoeffGt1) {
+          break;
         }
       }
-    }
 
-    // If the gt1 flag wasn't coded, this coefficient can't be finished
-    if (gt1FlagLayer == -1 || !isCoeffGt1) {
-      break;
-    }
+      // Code the gt2 flag
+      {
+        for (int l = gt1FlagLayer; l < layers.size(); l++) {
+          TDbrLayer& layer = layers[l];
+          const Bool isLastLayer = (l + 1 == layers.size());
 
-    // Layer in which the gt2 flag is coded
-    Int gt2FlagLayer = -1;
+          // Calculate context group for gt2 flag
+          const UInt gt2FlagContextGroup = getContextSetIndex(
+            component,
+            cgScanIndex,
+            layer.didLastCoeffGroupHaveAGt1Flag()
+          );
 
-    // Code gt2 flag
-    for (int l = gt1FlagLayer; l < layers.size(); l++) {
-      TDbrLayer& layer = layers[l];
-      const Bool isLastLayer = (l + 1 == layers.size());
+          // Calculate context offset for gt2 flag
+          const UInt gt2FlagContextOffset =
+            gt2FlagContextGroup * NUM_ABS_FLAG_CTX_PER_SET;
 
-      // Calculate context group for gt2 flag
-      const UInt flagContextGroup = getContextSetIndex(
-        component,
-        cgScanIndex,
-        layer.didLastCoeffGroupHaveAGt1Flag()
-      );
+          // Gt1 flag was signaled in a lower layer, so update context
+          if (gt2FlagLayer > -1) {
+            layer.observeGt2Flag(isCoeffGt2, gt2FlagContextOffset);
 
-      // Calculate context offset for gt2 flag
-      const UInt gt2FlagContextOffset =
-        flagContextGroup * NUM_ABS_FLAG_CTX_PER_SET;
+          // Try to signal gt2 flag in this layer
+          } else if (layer.hasBudgetForGt2Flag(gt2FlagContextOffset)) {
+            numLayeredBits += layer.codeGt2Flag(isCoeffGt2, gt2FlagContextOffset);
+            gt2FlagLayer = l;
 
-      // Gt1 flag was signaled in a lower layer, so update context
-      if (gt2FlagLayer > -1) {
-        layer.observeGt2Flag(isCoeffGt2, gt2FlagContextOffset);
+          // Adjust coded value if the significance flag couldn't be coded
+          } else if (isLastLayer) {
+            coefficients[coeffRasterIndex] = 2 + layer.mps(
+              TDbrCabacContexts::SyntaxElement::CoeffGt2Flag,
+              gt2FlagContextOffset
+            );
+            if (isSignNegative) {
+              coefficients[coeffRasterIndex] = -coefficients[coeffRasterIndex];
+            }
+          }
+        }
 
-      // Try to signal gt2 flag in this layer
-      } else if (layer.hasBudgetForGt2Flag(gt2FlagContextOffset)) {
-        numLayeredBits += layer.codeGt2Flag(isCoeffGt2, gt2FlagContextOffset);
-        gt2FlagLayer = l;
-
-      // Adjust coded flag value if this is the last layer
-      } else if (isLastLayer) {
-        coefficients[coeffRasterIndex] = 2 + layer.mps(
-          TDbrCabacContexts::SyntaxElement::CoeffGt2Flag,
-          gt2FlagContextOffset
-        );
-        if (isSignNegative) {
-          coefficients[coeffRasterIndex] = -coefficients[coeffRasterIndex];
+        // Finished with this coefficient if its gt2 flag is false or if it
+        //   couldn't be coded
+        if (gt2FlagLayer == -1 || !isCoeffGt2) {
+          break;
         }
       }
+
+      // Code the remaining level with Exp-Golomb
+      {
+        // Remaining coefficient level
+        UInt escapeCodeValue = (absCoeff - 3);
+
+        // Code the remaining level with Exp-Golomb
+        xLayerExpGolombValue(
+          escapeCodeValue,
+          layers[gt2FlagLayer].getGolombRiceParam(),
+          isPrecisionExtended,
+          maxLog2TrDynamicRange,
+          gt2FlagLayer
+        );
+      }
     }
-
-    // If the gt2 flag wasn't coded, this coefficient can't be finished
-    if (gt2FlagLayer == -1 || !isCoeffGt2) {
-      break;
-    }
-
-    // Remaining coefficient level
-    UInt escapeCodeValue = absCoeff - 3;
-
-    // Code the remaining level with Exp-Golomb
-    xLayerExpGolombValue(
-      escapeCodeValue,
-      layers[gt2FlagLayer].getGolombRiceParam(),
-      isPrecisionExtended,
-      maxLog2TrDynamicRange,
-      gt2FlagLayer
-    );
   }
 }

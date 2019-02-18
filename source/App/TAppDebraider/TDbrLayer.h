@@ -97,10 +97,10 @@ public:
 
   // Golomb-Rice parameter management
   UInt getGolombRiceParam() const;
-  UInt updateGolombRiceParam(UInt absCoeff);
+  Void updateGolombRiceParam(UInt absCoeff);
 
   // Bit budget management
-  UInt getBudget() const;
+  UInt64 getBudget() const;
   UInt getBudgetInBits() const;
   Void spendBits(UInt numBits);
   Void addBitsToBudget(UInt numBits);

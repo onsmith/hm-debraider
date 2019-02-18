@@ -108,6 +108,10 @@ ContextModel3DBuffer& TDbrCabacContexts::get(TDbrCabacContexts::SyntaxElement el
     return m_ChromaQpAdjFlagSCModel;
   case SyntaxElement::ChromaQpAdjIdc:
     return m_ChromaQpAdjIdcSCModel;
+
+  default:
+    assert(0);
+    return m_ChromaQpAdjIdcSCModel;
   }
 }
 

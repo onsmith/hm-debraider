@@ -63,6 +63,9 @@ public:
   // Initial bit budget (as fixed point) for each layer
   static const Int initialBudgetPerLayer;
 
+  // Typedef for shorthand
+  typedef TDbrCabacContexts::SyntaxElement SyntaxElement;
+
 
 protected:
   // Tracks total number of bits used to code remaining level
@@ -129,20 +132,27 @@ protected:
   Void xEncodeBinsEpOneAtATime(UInt bins, UInt numBins);
 
   // Adjusts the coded value based on the available budget
-  Void xLayerExpGolombValue(UInt& value, UInt riceParam, Bool useLimitedPrefixLength, Int maxLog2TrDynamicRange, Int startingLayer=0);
+  Void xLayerExpGolombValue(
+    UInt& value,                 // Remaining value to code
+    UInt absCoeff,               // Complete absolute coefficient value
+    UInt riceParam,              // Golomb-Rice param to use
+    Bool useLimitedPrefixLength, // Configuration from sps
+    Int maxLog2TrDynamicRange,   // Configuration from sps
+    Int startingLayer = 0        // Layer in which to start coding
+  );
 
   // Allocates bits to each layer's bit budget
   Void xAllocateBits();
 
   // Layers coefficient data while individually tracking the bit budget, coded
   //   coefficient flags/levels, and CABAC contexts for each layer
-  Void xLayerCoefficients(
-    const TComTU& tu,
-    ComponentID component,
-    Int lscScanIndex,
-    const UInt* isGroupSignificant,
-    const TUEntropyCodingParameters& codingParameters,
-    TCoeff* coefficients
+  Void xLayerCoefficientData(
+    const TComTU& tu, // Transform unit
+    ComponentID component, // Block component
+    Int lscScanIndex, // Index of last significant coefficient in scan order
+    const UInt* isGroupSignificant, // Array of coefficient significance flags
+    const TUEntropyCodingParameters& codingParameters, // Scan order object
+    TCoeff* coefficients // Actual coefficients
   );
 };
 
