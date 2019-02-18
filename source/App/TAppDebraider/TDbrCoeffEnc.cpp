@@ -1202,7 +1202,7 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
 
         // True if this significance flag value is implicitly coded
         const Bool isSigFlagImplicitlyCoded = (
-          isDCCoeff == 0 ||
+          isDCCoeff ||
           isLastAndOnlySigCoeffInGroup ||
           isLastSigCoeff
         );
@@ -1210,6 +1210,13 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
         // Implicitly signal significance flag
         if (isSigFlagImplicitlyCoded) {
           significanceFlagLayer = 0;
+          numSigCoeffsSeenSoFar++;
+        }
+
+        // Handle case with no layers
+        if (layers.size() == 0) {
+          coefficients[coeffRasterIndex] = isSigFlagImplicitlyCoded ? 1 : 0;
+          continue;
         }
 
         // Calculate context offset for significance flag
@@ -1237,6 +1244,7 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
           } else if (layer.hasBudgetForSigFlag(sigFlagContextOffset)) {
             numLayeredBits += layer.codeSigFlag(isCoeffSig, sigFlagContextOffset);
             significanceFlagLayer = l;
+            numSigCoeffsSeenSoFar++;
 
           // Adjust coded value if the significance flag couldn't be coded
           } else if (isLastLayer) {
