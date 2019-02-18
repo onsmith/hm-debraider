@@ -257,6 +257,17 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* coefficients, const Componen
   }
 
 
+  // Layer the coefficient data
+  xLayerCoefficients(
+    tu,                 // Tu structure
+    component,          // Block component (Y, U, or V)
+    lscScanOrderIndex,  // Index of last significant coefficient in block
+    isGroupSignificant, // Group significance flags
+    codingParameters,   // Object providing scan order info
+    coefficients        // Actual coefficient values
+  );
+
+
   // The index of the group containing the last significant coefficient
   const Int lscgScanOrderIndex = lscScanOrderIndex >> MLS_CG_SIZE;
 
@@ -266,16 +277,6 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* coefficients, const Componen
   // Context state variable for signaling whether coefficient levels are greater
   //   than 1
   UInt gt1Context = 1;
-
-  // Layer the coefficient data
-  xLayerCoefficients(
-    tu,                 // Tu structure
-    component,          // Component
-    lscScanOrderIndex,  // Last significant coefficient
-    isGroupSignificant, // Group significant flags
-    codingParameters,   // Scan order object
-    coefficients        // Coefficients
-  );
 
   // Iterate over the 4x4 coefficient groups
   for (Int cgScanOrderIndex = lscgScanOrderIndex; cgScanOrderIndex >= 0; cgScanOrderIndex--) {
@@ -978,6 +979,9 @@ Void TDbrCoeffEnc::xLayerExpGolombValue(UInt& value, UInt riceParam, Bool useLim
     numCodedBits
   );
 
+  // The layer that received the complete value
+  Int completeValueLayer = -1;
+
   // Account for the bits in the layer budgets
   Int numActualCodedBits = 0;
   for (int i = startingLayer; i < layers.size(); i++) {
@@ -991,6 +995,7 @@ Void TDbrCoeffEnc::xLayerExpGolombValue(UInt& value, UInt riceParam, Bool useLim
     if (numCodedBits <= numActualCodedBits + numAvailableBitsInThisLayer) {
       layer.spendBits(numCodedBits - numActualCodedBits);
       numActualCodedBits = numCodedBits;
+      completeValueLayer = i;
       break;
 
     // If only some of the bits could be coded in this layer...
@@ -1015,6 +1020,14 @@ Void TDbrCoeffEnc::xLayerExpGolombValue(UInt& value, UInt riceParam, Bool useLim
       codedBits,
       numCodedBits
     );
+
+  // If all bits were coded, update Golomb-Rice parameter
+  // NOTE: This assumes sig_flag, gt1_flag, and gt2_flag were ALL coded and
+  //       were ALL true
+  } else {
+    for (int i = completeValueLayer; i < layers.size(); i++) {
+      layers[i].updateGolombRiceParam(value + 3);
+    }
   }
 
   // Account for the bits that were actually signaled
@@ -1076,9 +1089,6 @@ Void TDbrCoeffEnc::xLayerCoefficients(
     layer.transformBlockReset();
   }
 
-  // Golomb-Rice parameter
-  UInt golombRiceParam;
-
   // Iterate over the coefficients in the block
   for (Int coeffScanIndex = 0; coeffScanIndex <= lscScanIndex; coeffScanIndex++) {
     // Coefficient group scan-order index
@@ -1089,7 +1099,6 @@ Void TDbrCoeffEnc::xLayerCoefficients(
 
     // Reset layers for the coefficient group
     if (isFirstCoeffInGroup) {
-      golombRiceParam = 0;
       for (TDbrLayer& layer : layers) {
         layer.coeffGroupReset();
       }
@@ -1246,15 +1255,10 @@ Void TDbrCoeffEnc::xLayerCoefficients(
     // Code the remaining level with Exp-Golomb
     xLayerExpGolombValue(
       escapeCodeValue,
-      golombRiceParam,
+      layers[gt2FlagLayer].getGolombRiceParam(),
       isPrecisionExtended,
       maxLog2TrDynamicRange,
       gt2FlagLayer
     );
-
-    // Adjust Golomb-Rice parameter
-    if (absCoeff > (3 << golombRiceParam)) {
-      golombRiceParam = min<UInt>(golombRiceParam + 1, 4);
-    }
   }
 }

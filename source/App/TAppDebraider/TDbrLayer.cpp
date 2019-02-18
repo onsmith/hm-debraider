@@ -4,6 +4,7 @@
 TDbrLayer::TDbrLayer() :
   flagContextState(1),
   lastFlagContextState(1),
+  golombRiceParam(0),
   numCodedSigFlags(0),
   numCodedGt1Flags(0),
   numCodedGt2Flags(0),
@@ -46,30 +47,30 @@ const UInt TDbrLayer::toInt(UInt val) {
 }
 
 
-Void TDbrLayer::resetContexts(TComSlice& slice) {
+Void TDbrLayer::xResetContexts(TComSlice& slice) {
   contexts.resetEntropy(&slice);
 }
 
 
-Void TDbrLayer::resetBudget() {
+Void TDbrLayer::xResetBudget() {
   budget = 0;
 }
 
 
-Void TDbrLayer::resetCoeffGroupFlagCounts() {
+Void TDbrLayer::xResetCoeffGroupFlagCounts() {
   numCodedSigFlags = 0;
   numCodedGt1Flags = 0;
   numCodedGt2Flags = 0;
 }
 
 
-Void TDbrLayer::resetFlagContextState() {
+Void TDbrLayer::xResetFlagContextState() {
   lastFlagContextState = flagContextState;
   flagContextState = 1;
 }
 
 
-UInt TDbrLayer::bitCost(TDbrCabacContexts::SyntaxElement flagType, UInt flag, UInt contextIndex) {
+UInt TDbrLayer::bitCost(SyntaxElement flagType, UInt flag, UInt contextIndex) {
   return bitCost(contexts.get(flagType).get(0, 0, contextIndex), flag);
 }
 
@@ -91,7 +92,7 @@ UInt TDbrLayer::minBitCost(ContextModel& context) {
 }
 
 
-Bool TDbrLayer::hasBudgetForFlag(TDbrCabacContexts::SyntaxElement flagType, UInt contextIndex) {
+Bool TDbrLayer::hasBudgetForFlag(SyntaxElement flagType, UInt contextIndex) {
   return (
     budget >= maxBitCost(contexts.get(flagType).get(0, 0, contextIndex))
   );
@@ -100,7 +101,7 @@ Bool TDbrLayer::hasBudgetForFlag(TDbrCabacContexts::SyntaxElement flagType, UInt
 
 Bool TDbrLayer::hasBudgetForSigFlag(UInt contextIndex) {
   return hasBudgetForFlag(
-    TDbrCabacContexts::SyntaxElement::SigCoeffFlag,
+    SyntaxElement::SigCoeffFlag,
     contextIndex
   );
 }
@@ -108,7 +109,7 @@ Bool TDbrLayer::hasBudgetForSigFlag(UInt contextIndex) {
 
 Bool TDbrLayer::hasBudgetForGt1Flag(UInt contextIndex) {
   return hasBudgetForFlag(
-    TDbrCabacContexts::SyntaxElement::CoeffGt1Flag,
+    SyntaxElement::CoeffGt1Flag,
     contextIndex
   );
 }
@@ -116,13 +117,13 @@ Bool TDbrLayer::hasBudgetForGt1Flag(UInt contextIndex) {
 
 Bool TDbrLayer::hasBudgetForGt2Flag(UInt contextIndex) {
   return hasBudgetForFlag(
-    TDbrCabacContexts::SyntaxElement::CoeffGt2Flag,
+    SyntaxElement::CoeffGt2Flag,
     contextIndex
   );
 }
 
 
-UInt TDbrLayer::codeFlag(TDbrCabacContexts::SyntaxElement flagType, UInt flag, UInt contextIndex) {
+UInt TDbrLayer::codeFlag(SyntaxElement flagType, UInt flag, UInt contextIndex) {
   // Get context model
   ContextModel& context = contexts.get(flagType).get(0, 0, contextIndex);
 
@@ -139,7 +140,7 @@ UInt TDbrLayer::codeFlag(TDbrCabacContexts::SyntaxElement flagType, UInt flag, U
 
 UInt TDbrLayer::codeSigFlag(UInt flag, UInt contextIndex) {
   numCodedSigFlags++;
-  return codeFlag(TDbrCabacContexts::SyntaxElement::SigCoeffFlag, flag, contextIndex);
+  return codeFlag(SyntaxElement::SigCoeffFlag, flag, contextIndex);
 }
 
 
@@ -150,22 +151,22 @@ UInt TDbrLayer::codeGt1Flag(UInt flag, UInt contextIndex) {
   } else if (0 < flagContextState && flagContextState < 4) {
     flagContextState++;
   }
-  return codeFlag(TDbrCabacContexts::SyntaxElement::CoeffGt1Flag, flag, contextIndex);
+  return codeFlag(SyntaxElement::CoeffGt1Flag, flag, contextIndex);
 }
 
 
 UInt TDbrLayer::codeGt2Flag(UInt flag, UInt contextIndex) {
   numCodedGt2Flags++;
-  return codeFlag(TDbrCabacContexts::SyntaxElement::CoeffGt2Flag, flag, contextIndex);
+  return codeFlag(SyntaxElement::CoeffGt2Flag, flag, contextIndex);
 }
 
 
-UInt TDbrLayer::mps(TDbrCabacContexts::SyntaxElement flagType, UInt contextIndex) {
+UInt TDbrLayer::mps(SyntaxElement flagType, UInt contextIndex) {
   return contexts.get(flagType).get(0, 0, contextIndex).getMps();
 }
 
 
-Void TDbrLayer::observeFlag(TDbrCabacContexts::SyntaxElement flagType, UInt flag, UInt contextIndex) {
+Void TDbrLayer::observeFlag(SyntaxElement flagType, UInt flag, UInt contextIndex) {
   contexts
     .get(flagType)
     .get(0, 0, contextIndex)
@@ -175,7 +176,7 @@ Void TDbrLayer::observeFlag(TDbrCabacContexts::SyntaxElement flagType, UInt flag
 
 Void TDbrLayer::observeSigFlag(UInt flag, UInt contextIndex) {
   numCodedSigFlags++;
-  observeFlag(TDbrCabacContexts::SyntaxElement::SigCoeffFlag, flag, contextIndex);
+  observeFlag(SyntaxElement::SigCoeffFlag, flag, contextIndex);
 }
 
 
@@ -186,13 +187,13 @@ Void TDbrLayer::observeGt1Flag(UInt flag, UInt contextIndex) {
   } else if (0 < flagContextState && flagContextState < 4) {
     flagContextState++;
   }
-  observeFlag(TDbrCabacContexts::SyntaxElement::CoeffGt1Flag, flag, contextIndex);
+  observeFlag(SyntaxElement::CoeffGt1Flag, flag, contextIndex);
 }
 
 
 Void TDbrLayer::observeGt2Flag(UInt flag, UInt contextIndex) {
   numCodedGt2Flags++;
-  observeFlag(TDbrCabacContexts::SyntaxElement::CoeffGt2Flag, flag, contextIndex);
+  observeFlag(SyntaxElement::CoeffGt2Flag, flag, contextIndex);
 }
 
 
@@ -216,19 +217,39 @@ Bool TDbrLayer::didLastCoeffGroupHaveAGt1Flag() const {
 }
 
 
-Void TDbrLayer::nalReset(TComSlice& slice) {
-  resetContexts(slice);
+Void TDbrLayer::naluReset(TComSlice& slice) {
+  xResetContexts(slice);
 }
 
 
 Void TDbrLayer::transformBlockReset() {
-  resetCoeffGroupFlagCounts();
+  xResetCoeffGroupFlagCounts();
+  xResetGolombRiceParam();
   lastFlagContextState = 1;
   flagContextState     = 1;
 }
 
 
 Void TDbrLayer::coeffGroupReset() {
-  resetCoeffGroupFlagCounts();
-  resetFlagContextState();
+  xResetCoeffGroupFlagCounts();
+  xResetFlagContextState();
+  xResetGolombRiceParam();
+}
+
+
+
+UInt TDbrLayer::getGolombRiceParam() const {
+  return golombRiceParam;
+}
+
+
+UInt TDbrLayer::updateGolombRiceParam(UInt absCoeff) {
+  if (absCoeff > (3 << golombRiceParam)) {
+    golombRiceParam = std::min<UInt>(golombRiceParam + 1, 4);
+  }
+}
+
+
+Void TDbrLayer::xResetGolombRiceParam() {
+  golombRiceParam = 0;
 }
