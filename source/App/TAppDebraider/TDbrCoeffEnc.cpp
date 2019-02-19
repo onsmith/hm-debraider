@@ -1223,10 +1223,7 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
 
         // Implicitly signal significance flag for last significant coefficient
         if (isImplicitlyCoded) {
-          // TODO: Ugly hack, we have to make this a significant coefficient
-          if (!isSig(coeff)) {
-            coeff = 1;
-          }
+          assert(coeff != 0);
           significanceFlagLayer = 0;
           hasSigCoeffBeenCoded = true;
         }
@@ -1266,14 +1263,12 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
 
           // Adjust coded value if the significance flag couldn't be coded
           } else if (isLastLayer) {
-            coeff = layer.mps(
+            coeff = hasSigCoeffBeenCoded ? layer.mps(
               SyntaxElement::SigCoeffFlag,
               sigFlagContextOffset
-            );
-            if (isCoeffNegative) {
-              coeff = -coeff;
-            }
-            hasSigCoeffBeenCoded |= isSig(coeff);
+            ) : 1;
+            coeff = isCoeffNegative ? -coeff : coeff;
+            hasSigCoeffBeenCoded = true;
           }
         }
 
@@ -1319,9 +1314,7 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
               SyntaxElement::CoeffGt1Flag,
               gt1FlagContextOffset
             );
-            if (isCoeffNegative) {
-              coeff = -coeff;
-            }
+            coeff = isCoeffNegative ? -coeff : coeff;
           }
         }
         
@@ -1364,9 +1357,7 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
               SyntaxElement::CoeffGt2Flag,
               gt2FlagContextOffset
             );
-            if (isCoeffNegative) {
-              coeff = -coeff;
-            }
+            coeff = isCoeffNegative ? -coeff : coeff;
           }
         }
 
@@ -1380,12 +1371,14 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
       // Code the remaining level with Exp-Golomb
       {
         // Remaining coefficient level
-        UInt escapeCodeValue = (absCoeff - 3);
-        assert(absCoeff >= 3);
+        const UInt baseLevel = 3;
+        UInt escapeCodeValue = absCoeff - baseLevel;
+        assert(absCoeff >= baseLevel);
 
         // Code the remaining level with Exp-Golomb
         xLayerExpGolombValue(
           escapeCodeValue,
+          absCoeff,
           layers[gt2FlagLayer].getGolombRiceParam(),
           isPrecisionExtended,
           maxLog2TrDynamicRange,
@@ -1393,10 +1386,8 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
         );
 
         // Adjust coded value to reflect coded level
-        coeff = escapeCodeValue + 3;
-        if (isCoeffNegative) {
-          coeff = -coeff;
-        }
+        coeff = escapeCodeValue + baseLevel;
+        coeff = isCoeffNegative ? -coeff : coeff;
       }
     }
   }
