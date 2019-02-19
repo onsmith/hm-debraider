@@ -8,15 +8,15 @@
 
 // Number of bits (as fixed point) to allot for each coded remaining level
 // Currently set to 0.5 bits
-const Int TDbrCoeffEnc::allowancePerCoeffPerLayer = 0x1 << (TDbrLayer::FIXED_POINT_PRECISION - 1);
+const Int64 TDbrCoeffEnc::allowancePerCoeffPerLayer = 0x1 << (TDbrLayer::FIXED_POINT_PRECISION - 1);
 
 // Currently set to 0.25 bits
-//const Int TDbrCoeffEnc::allowancePerCoeffPerLayer = 0x1 << (TDbrLayer::FIXED_POINT_PRECISION - 2);
+//const Int64 TDbrCoeffEnc::allowancePerCoeffPerLayer = 0x1 << (TDbrLayer::FIXED_POINT_PRECISION - 2);
 
 
 
 // Initial bit budget (as fixed point) for each layer
-const Int TDbrCoeffEnc::initialBudgetPerLayer = TDbrLayer::toFixedPoint(3);
+const Int64 TDbrCoeffEnc::initialBudgetPerLayer = TDbrLayer::toFixedPoint(3);
 
 
 
@@ -59,7 +59,7 @@ Void TDbrCoeffEnc::setXmlWriter(TDbrXmlWriter* writer) {
 
 
 Int64 TDbrCoeffEnc::getNumLayeredBits() const {
-  return numLayeredBits;
+  return (numLayeredBits >> TDbrLayer::FIXED_POINT_PRECISION);
 }
 
 
@@ -367,6 +367,8 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* coefficients, const Componen
               isCoeffSigFlag,
               contextOffset + getSignificanceMapContextOffset(component)
             );
+          } else {
+            assert(isCoeffSigFlag);
           }
 
           // Store significant coefficients to encode during later scans
@@ -1111,6 +1113,27 @@ static UInt getSigFlagContextOffset(
 
 
 
+inline static Bool isSig(TCoeff coeff) {
+  return (coeff != 0);
+}
+
+
+inline static Bool isGt1(TCoeff coeff) {
+  return (coeff > 1 || coeff < -1);
+}
+
+
+inline static Bool isGt2(TCoeff coeff) {
+  return (coeff > 2 || coeff < -2);
+}
+
+
+inline static Bool isNeg(TCoeff coeff) {
+  return (coeff < 0);
+}
+
+
+
 Void TDbrCoeffEnc::xLayerCoefficientData(
   const TComTU& tu,
   ComponentID component,
@@ -1145,13 +1168,13 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
       continue;
     }
 
+    // True if a significant coefficient has been coded in this group
+    Bool hasSigCoeffBeenCoded = false;
+
     // Reset layer data for this coefficient group
     for (TDbrLayer& layer : layers) {
       layer.coeffGroupReset();
     }
-
-    // Number of significant coefficients seen so far in the current group
-    UInt numSigCoeffsSeenSoFar = 0;
 
     // Indices of first and last coefficient in the group
     const Int firstCoeffInGroupScanIndex = (cgScanIndex << MLS_CG_SIZE);
@@ -1168,14 +1191,12 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
       // Coefficient raster-order index
       const UInt coeffRasterIndex = codingParameters.scan[coeffScanIndex];
 
-      // Absolute value and sign of coefficient
-      const UInt absCoeff       = abs(coefficients[coeffRasterIndex]);
-      const Bool isSignNegative = (coefficients[coeffRasterIndex] < 0);
+      // Current coefficient
+      TCoeff& coeff = coefficients[coeffRasterIndex];
 
-      // Coefficient flags
-      const UInt isCoeffSig = (absCoeff > 0 ? 1 : 0);
-      const UInt isCoeffGt1 = (absCoeff > 1 ? 1 : 0);
-      const UInt isCoeffGt2 = (absCoeff > 2 ? 1 : 0);
+      // Absolute value and sign of coefficient
+      const UInt absCoeff       = abs(coeff);
+      const Bool isCoeffNegative = isNeg(coeff);
 
       // Layer in which the significance flag is coded
       Int significanceFlagLayer = -1;
@@ -1188,38 +1209,31 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
 
       // Code the significance flag
       {
-        // True if this is the DC coefficient
-        const Bool isDCCoeff = coeffScanIndex == 0;
-
-        // True if this is the last and only significant coefficient in the group
-        const Bool isLastAndOnlySigCoeffInGroup = (
-          coeffScanIndex == lastCodedCoeffInGroupScanIndex &&
-          numSigCoeffsSeenSoFar == 0
-        );
-
         // True if this is the last significant coefficient in the block
         const Bool isLastSigCoeff = coeffScanIndex == lscScanIndex;
 
-        // True if this significance flag value is implicitly coded
-        const Bool isSigFlagImplicitlyCoded = (
-          isDCCoeff ||
-          isLastAndOnlySigCoeffInGroup ||
-          isLastSigCoeff
-        );
+        // True if this is the last significant coefficient in the group
+        const Bool isLastCoeffInBlock =
+          coeffScanIndex == lastCodedCoeffInGroupScanIndex;
 
-        // Implicitly signal significance flag
-        if (isSigFlagImplicitlyCoded) {
+        // True if this coefficient should be implicitly coded
+        const Bool isImplicitlyCoded =
+          isLastSigCoeff ||
+          !hasSigCoeffBeenCoded && isLastCoeffInBlock;
+
+        // Implicitly signal significance flag for last significant coefficient
+        if (isImplicitlyCoded) {
+          // TODO: Ugly hack, we have to make this a significant coefficient
+          if (!isSig(coeff)) {
+            coeff = 1;
+          }
           significanceFlagLayer = 0;
-          numSigCoeffsSeenSoFar++;
-          assert(coefficients[coeffRasterIndex] != 0);
+          hasSigCoeffBeenCoded = true;
         }
 
         // Handle case with no layers
         if (layers.size() == 0) {
-          coefficients[coeffRasterIndex] = isSigFlagImplicitlyCoded ? 1 : 0;
-          if (coefficients[coeffRasterIndex] != 0) {
-            numSigCoeffsSeenSoFar++;
-          }
+          coeff = isImplicitlyCoded ? 1 : 0;
           continue;
         }
 
@@ -1242,32 +1256,30 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
 
           // Significance flag was signaled in a lower layer, so update context
           if (significanceFlagLayer > -1) {
-            layer.observeSigFlag(isCoeffSig, sigFlagContextOffset);
+            layer.observeSigFlag(isSig(coeff), sigFlagContextOffset);
 
           // Try to signal significance flag in this layer
           } else if (layer.hasBudgetForSigFlag(sigFlagContextOffset)) {
-            numLayeredBits += layer.codeSigFlag(isCoeffSig, sigFlagContextOffset);
+            numLayeredBits += layer.codeSigFlag(isSig(coeff), sigFlagContextOffset);
             significanceFlagLayer = l;
-            numSigCoeffsSeenSoFar++;
+            hasSigCoeffBeenCoded |= isSig(coeff);
 
           // Adjust coded value if the significance flag couldn't be coded
           } else if (isLastLayer) {
-            coefficients[coeffRasterIndex] = layer.mps(
+            coeff = layer.mps(
               SyntaxElement::SigCoeffFlag,
               sigFlagContextOffset
             );
-            if (isSignNegative) {
-              coefficients[coeffRasterIndex] = -coefficients[coeffRasterIndex];
+            if (isCoeffNegative) {
+              coeff = -coeff;
             }
-            if (coefficients[coeffRasterIndex] != 0) {
-              numSigCoeffsSeenSoFar++;
-            }
+            hasSigCoeffBeenCoded |= isSig(coeff);
           }
         }
 
         // Finished with this coefficient if its significant flag is false or
         //   if it couldn't be coded
-        if (significanceFlagLayer == -1 || !isCoeffSig) {
+        if (significanceFlagLayer == -1 || !isSig(coeff)) {
           continue;
         }
       }
@@ -1294,28 +1306,28 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
 
           // Gt1 flag was signaled in a lower layer, so update context
           if (gt1FlagLayer > -1) {
-            layer.observeGt1Flag(isCoeffGt1, gt1FlagContextOffset);
+            layer.observeGt1Flag(isGt1(coeff), gt1FlagContextOffset);
 
           // Try to signal gt1 flag in this layer
           } else if (layer.hasBudgetForGt1Flag(gt1FlagContextOffset)) {
-            numLayeredBits += layer.codeGt1Flag(isCoeffGt1, gt1FlagContextOffset);
+            numLayeredBits += layer.codeGt1Flag(isGt1(coeff), gt1FlagContextOffset);
             gt1FlagLayer = l;
 
           // Adjust coded value if the gt1 flag couldn't be coded
           } else if (isLastLayer) {
-            coefficients[coeffRasterIndex] = 1 + layer.mps(
+            coeff = 1 + layer.mps(
               SyntaxElement::CoeffGt1Flag,
               gt1FlagContextOffset
             );
-            if (isSignNegative) {
-              coefficients[coeffRasterIndex] = -coefficients[coeffRasterIndex];
+            if (isCoeffNegative) {
+              coeff = -coeff;
             }
           }
         }
         
         // Finished with this coefficient if its gt1 flag is false or if it
         //   couldn't be coded
-        if (gt1FlagLayer == -1 || !isCoeffGt1) {
+        if (gt1FlagLayer == -1 || !isGt1(coeff)) {
           continue;
         }
       }
@@ -1339,28 +1351,28 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
 
           // Gt1 flag was signaled in a lower layer, so update context
           if (gt2FlagLayer > -1) {
-            layer.observeGt2Flag(isCoeffGt2, gt2FlagContextOffset);
+            layer.observeGt2Flag(isGt2(coeff), gt2FlagContextOffset);
 
           // Try to signal gt2 flag in this layer
           } else if (layer.hasBudgetForGt2Flag(gt2FlagContextOffset)) {
-            numLayeredBits += layer.codeGt2Flag(isCoeffGt2, gt2FlagContextOffset);
+            numLayeredBits += layer.codeGt2Flag(isGt2(coeff), gt2FlagContextOffset);
             gt2FlagLayer = l;
 
           // Adjust coded value if the significance flag couldn't be coded
           } else if (isLastLayer) {
-            coefficients[coeffRasterIndex] = 2 + layer.mps(
+            coeff = 2 + layer.mps(
               SyntaxElement::CoeffGt2Flag,
               gt2FlagContextOffset
             );
-            if (isSignNegative) {
-              coefficients[coeffRasterIndex] = -coefficients[coeffRasterIndex];
+            if (isCoeffNegative) {
+              coeff = -coeff;
             }
           }
         }
 
         // Finished with this coefficient if its gt2 flag is false or if it
         //   couldn't be coded
-        if (gt2FlagLayer == -1 || !isCoeffGt2) {
+        if (gt2FlagLayer == -1 || !isGt2(coeff)) {
           continue;
         }
       }
@@ -1381,17 +1393,11 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
         );
 
         // Adjust coded value to reflect coded level
-        coefficients[coeffRasterIndex] = escapeCodeValue + 3;
-        if (isSignNegative) {
-          coefficients[coeffRasterIndex] = -coefficients[coeffRasterIndex];
+        coeff = escapeCodeValue + 3;
+        if (isCoeffNegative) {
+          coeff = -coeff;
         }
       }
     }
-
-    // Can't have a significant group with no significant coefficients
-    //assert(numSigCoeffsSeenSoFar > 0);
   }
-
-  // Last significant coefficient must be nonzero
-  assert(coefficients[codingParameters.scan[lscScanIndex]] != 0);
 }

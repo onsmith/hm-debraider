@@ -13,7 +13,7 @@ TDbrLayer::TDbrLayer() :
 }
 
 
-UInt64 TDbrLayer::getBudget() const {
+Int64 TDbrLayer::getBudget() const {
   return budget;
 }
 

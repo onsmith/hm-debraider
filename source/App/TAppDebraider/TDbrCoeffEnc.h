@@ -58,10 +58,10 @@ using std::vector;
 class TDbrCoeffEnc {
 public:
   // Number of bits (as fixed point) to allot for each coded remaining level
-  static const Int allowancePerCoeffPerLayer;
+  static const Int64 allowancePerCoeffPerLayer;
 
   // Initial bit budget (as fixed point) for each layer
-  static const Int initialBudgetPerLayer;
+  static const Int64 initialBudgetPerLayer;
 
   // Typedef for shorthand
   typedef TDbrCabacContexts::SyntaxElement SyntaxElement;

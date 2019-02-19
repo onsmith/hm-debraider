@@ -71,7 +71,7 @@ protected:
   TDbrCabacContexts contexts;
 
   // Bit budget
-  UInt64 budget;
+  Int64 budget;
 
   // Tracks number of coded flags
   UInt numCodedSigFlags;
@@ -100,7 +100,7 @@ public:
   Void updateGolombRiceParam(UInt absCoeff);
 
   // Bit budget management
-  UInt64 getBudget() const;
+  Int64 getBudget() const;
   UInt getBudgetInBits() const;
   Void spendBits(UInt numBits);
   Void addBitsToBudget(UInt numBits);
