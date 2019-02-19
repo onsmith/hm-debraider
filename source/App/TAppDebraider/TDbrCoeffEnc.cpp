@@ -295,7 +295,7 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* coefficients, const Componen
     Int lastSCInCGScanOrderIndex = -1;
 
     // Array storing the absolute value coefficients
-    Int  absCoeffs[1 << MLS_CG_SIZE];
+    Int absCoeffs[1 << MLS_CG_SIZE];
 
     // Implicitly signal the last significant coefficient
     if (coeffScanOrderIndex == lscScanOrderIndex) {
@@ -1216,6 +1216,9 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
         // Handle case with no layers
         if (layers.size() == 0) {
           coefficients[coeffRasterIndex] = isSigFlagImplicitlyCoded ? 1 : 0;
+          if (coefficients[coeffRasterIndex] != 0) {
+            numSigCoeffsSeenSoFar++;
+          }
           continue;
         }
 
@@ -1264,7 +1267,7 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
         // Finished with this coefficient if its significant flag is false or
         //   if it couldn't be coded
         if (significanceFlagLayer == -1 || !isCoeffSig) {
-          break;
+          continue;
         }
       }
 
@@ -1312,7 +1315,7 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
         // Finished with this coefficient if its gt1 flag is false or if it
         //   couldn't be coded
         if (gt1FlagLayer == -1 || !isCoeffGt1) {
-          break;
+          continue;
         }
       }
 
@@ -1357,7 +1360,7 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
         // Finished with this coefficient if its gt2 flag is false or if it
         //   couldn't be coded
         if (gt2FlagLayer == -1 || !isCoeffGt2) {
-          break;
+          continue;
         }
       }
 
@@ -1375,7 +1378,19 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
           maxLog2TrDynamicRange,
           gt2FlagLayer
         );
+
+        // Adjust coded value to reflect coded level
+        coefficients[coeffRasterIndex] = escapeCodeValue + 3;
+        if (isSignNegative) {
+          coefficients[coeffRasterIndex] = -coefficients[coeffRasterIndex];
+        }
       }
     }
+
+    // Can't have a significant group with no significant coefficients
+    //assert(numSigCoeffsSeenSoFar > 0);
   }
+
+  // Last significant coefficient must be nonzero
+  assert(coefficients[codingParameters.scan[lscScanIndex]] != 0);
 }
