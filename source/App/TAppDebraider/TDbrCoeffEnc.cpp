@@ -1255,6 +1255,9 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
             if (isSignNegative) {
               coefficients[coeffRasterIndex] = -coefficients[coeffRasterIndex];
             }
+            if (coefficients[coeffRasterIndex] != 0) {
+              numSigCoeffsSeenSoFar++;
+            }
           }
         }
 
@@ -1342,7 +1345,7 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
           // Adjust coded value if the significance flag couldn't be coded
           } else if (isLastLayer) {
             coefficients[coeffRasterIndex] = 2 + layer.mps(
-              TDbrCabacContexts::SyntaxElement::CoeffGt2Flag,
+              SyntaxElement::CoeffGt2Flag,
               gt2FlagContextOffset
             );
             if (isSignNegative) {
@@ -1362,6 +1365,7 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
       {
         // Remaining coefficient level
         UInt escapeCodeValue = (absCoeff - 3);
+        assert(absCoeff >= 3);
 
         // Code the remaining level with Exp-Golomb
         xLayerExpGolombValue(
