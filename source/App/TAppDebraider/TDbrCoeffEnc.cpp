@@ -1211,6 +1211,7 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
         if (isSigFlagImplicitlyCoded) {
           significanceFlagLayer = 0;
           numSigCoeffsSeenSoFar++;
+          assert(coefficients[coeffRasterIndex] != 0);
         }
 
         // Handle case with no layers
