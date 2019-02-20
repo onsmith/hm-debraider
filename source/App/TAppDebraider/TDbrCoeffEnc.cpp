@@ -8,10 +8,10 @@
 
 // Number of bits (as fixed point) to allot for each coded remaining level
 // Currently set to 0.5 bits
-const Int64 TDbrCoeffEnc::allowancePerCoeffPerLayer = 0x1 << (TDbrLayer::FIXED_POINT_PRECISION - 1);
+//const Int64 TDbrCoeffEnc::allowancePerCoeffPerLayer = 0x1 << (TDbrLayer::FIXED_POINT_PRECISION - 1);
 
 // Currently set to 0.25 bits
-//const Int64 TDbrCoeffEnc::allowancePerCoeffPerLayer = 0x1 << (TDbrLayer::FIXED_POINT_PRECISION - 2);
+const Int64 TDbrCoeffEnc::allowancePerCoeffPerLayer = 0x1 << (TDbrLayer::FIXED_POINT_PRECISION - 2);
 
 
 
@@ -1195,7 +1195,7 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
       TCoeff& coeff = coefficients[coeffRasterIndex];
 
       // Absolute value and sign of coefficient
-      const UInt absCoeff       = abs(coeff);
+      const UInt absCoeff        = abs(coeff);
       const Bool isCoeffNegative = isNeg(coeff);
 
       // Layer in which the significance flag is coded
@@ -1215,11 +1215,14 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
         // True if this is the last significant coefficient in the group
         const Bool isLastCoeffInBlock =
           coeffScanIndex == lastCodedCoeffInGroupScanIndex;
+        
+        // True if this context group contains the DC coefficient
+        const Bool isDcCg = cgScanIndex == 0;
 
         // True if this coefficient should be implicitly coded
         const Bool isImplicitlyCoded =
           isLastSigCoeff ||
-          !hasSigCoeffBeenCoded && isLastCoeffInBlock;
+          !hasSigCoeffBeenCoded && isLastCoeffInBlock && !isDcCg;
 
         // Implicitly signal significance flag for last significant coefficient
         if (isImplicitlyCoded) {
@@ -1230,7 +1233,9 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
 
         // Handle case with no layers
         if (layers.size() == 0) {
-          coeff = isImplicitlyCoded ? 1 : 0;
+          coeff = isImplicitlyCoded || !hasSigCoeffBeenCoded ? 1 : 0;
+          coeff = isCoeffNegative ? -coeff : coeff;
+          hasSigCoeffBeenCoded = true;
           continue;
         }
 
@@ -1351,7 +1356,7 @@ Void TDbrCoeffEnc::xLayerCoefficientData(
             numLayeredBits += layer.codeGt2Flag(isGt2(coeff), gt2FlagContextOffset);
             gt2FlagLayer = l;
 
-          // Adjust coded value if the significance flag couldn't be coded
+          // Adjust coded value if the gt2 flag couldn't be coded
           } else if (isLastLayer) {
             coeff = 2 + layer.mps(
               SyntaxElement::CoeffGt2Flag,
