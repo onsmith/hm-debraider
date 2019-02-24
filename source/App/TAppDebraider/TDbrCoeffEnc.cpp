@@ -465,12 +465,14 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* coefficients, const Componen
         if (absCoeffs[sigCoeffIndex] >= baseLevel) {
           // Adjust coded value
           UInt escapeCodeValue = absCoeffs[sigCoeffIndex] - baseLevel;
-          xAdjustCodedValue(
-            escapeCodeValue,
-            golombRiceParam,
-            isPrecisionExtended,
-            maxLog2TrDynamicRange
-          );
+          if (cu.isInter(tuPartIndex)) {
+            xAdjustCodedValue(
+              escapeCodeValue,
+              golombRiceParam,
+              isPrecisionExtended,
+              maxLog2TrDynamicRange
+            );
+          }
 
           // Update coefficient level based on adjusted coded value
           absCoeffs[sigCoeffIndex] = escapeCodeValue + baseLevel;
