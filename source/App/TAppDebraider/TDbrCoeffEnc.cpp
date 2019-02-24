@@ -261,14 +261,16 @@ Void TDbrCoeffEnc::codeCoeffNxN(TComTU &tu, TCoeff* coefficients, const Componen
 
 
   // Layer the coefficient data
-  xLayerCoefficientData(
-    tu,                 // Tu structure
-    component,          // Block component (Y, U, or V)
-    lscScanOrderIndex,  // Index of last significant coefficient in block
-    isGroupSignificant, // Group significance flags
-    codingParameters,   // Object providing scan order info
-    coefficients        // Actual coefficient values
-  );
+  if (cu.isInter(tuPartIndex)) {
+    xLayerCoefficientData(
+      tu,                 // Tu structure
+      component,          // Block component (Y, U, or V)
+      lscScanOrderIndex,  // Index of last significant coefficient in block
+      isGroupSignificant, // Group significance flags
+      codingParameters,   // Object providing scan order info
+      coefficients        // Actual coefficient values
+    );
+  }
 
 
   // The index of the group containing the last significant coefficient

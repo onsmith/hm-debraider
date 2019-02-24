@@ -28,7 +28,7 @@ Void TDbrLayer::addBitsToBudget(UInt numBits) {
 }
 
 
-Void TDbrLayer::addFixedPointToBudget(UInt amount) {
+Void TDbrLayer::addFixedPointToBudget(Int64 amount) {
   budget += amount;
 }
 

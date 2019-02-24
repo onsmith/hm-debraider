@@ -104,7 +104,7 @@ public:
   UInt getBudgetInBits() const;
   Void spendBits(UInt numBits);
   Void addBitsToBudget(UInt numBits);
-  Void addFixedPointToBudget(UInt amount);
+  Void addFixedPointToBudget(Int64 amount);
 
   // Check if there's room for another flag
   Bool hasRoomForGt1Flag() const;
